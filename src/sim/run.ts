@@ -28,12 +28,26 @@ export const ECONOMY = {
   defectScale: 0.85,
   /** 同时挂着的订单上限 */
   offerBoard: 6,
+  /** 每件违约扣的分 */
+  breachPoints: 3,
 } as const
 
 export const GRADE_MULT: Record<string, number> = {
   珍品: 1.6,
   正品: 1.0,
   粗器: 0.45,
+  废品: 0,
+}
+
+/**
+ * 结算分。分数只认交付，不认钱包——上一版按剩余现金排名，结果"每窑烧空、
+ * 一分不赚但也没亏"的躺平（+10）能在部分种子上赢过玩砸了的破产者（负数）。
+ * 破产的人保留他已经烧出来的东西，但一分交付都没有的人必须垫底。
+ */
+export const GRADE_POINTS: Record<string, number> = {
+  珍品: 10,
+  正品: 6,
+  粗器: 2,
   废品: 0,
 }
 
@@ -64,6 +78,8 @@ export interface RunState {
   /** 每局的窑位温偏图，整局不变（这是"位置知识"的来源） */
   kilnOffsets: number[]
   history: PieceResult[][]
+  /** 到期没交齐的件数，计分要扣 */
+  breached: number
   over: boolean
   reason: string
 }
@@ -84,6 +100,7 @@ export function newRun(seed: number): RunState {
     delivered: {},
     kilnOffsets,
     history: [],
+    breached: 0,
     over: false,
     reason: '',
   }
@@ -163,13 +180,16 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
   }
 
   let cash = state.cash - cost + revenue
+  let breached = state.breached
 
   const stillOpen: Offer[] = []
   for (const order of state.accepted) {
     const got = delivered[order.id] ?? 0
     if (got >= order.qty) continue
     if (state.kiln >= order.deadlineKiln) {
-      cash -= Math.round(order.pricePerPiece * (order.qty - got) * ECONOMY.breachFineRate)
+      const short = order.qty - got
+      cash -= Math.round(order.pricePerPiece * short * ECONOMY.breachFineRate)
+      breached += short
       continue
     }
     stillOpen.push(order)
@@ -195,6 +215,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
     offers,
     accepted: stillOpen,
     delivered,
+    breached,
     history: [...state.history, pieces],
     over,
     reason: over ? (broke ? '断火' : '窑期用尽') : '',
@@ -203,27 +224,38 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
 
 export interface RunSummary {
   seed: number
+  score: number
   cash: number
   kilns: number
-  pieces: number
+  /** 装窑烧过的件数（含报废） */
+  fired: number
+  /** 真正交付出去的件数 */
+  delivered: number
+  breached: number
   grades: Record<string, number>
   bankrupt: boolean
 }
 
 export function summarize(state: RunState): RunSummary {
   const grades: Record<string, number> = { 珍品: 0, 正品: 0, 粗器: 0, 废品: 0 }
-  let pieces = 0
+  let fired = 0
+  let points = 0
   for (const kiln of state.history) {
     for (const p of kiln) {
       grades[p.grade] = (grades[p.grade] ?? 0) + 1
-      pieces += 1
+      points += GRADE_POINTS[p.grade] ?? 0
+      fired += 1
     }
   }
+  const deliveredPieces = fired - (grades['废品'] ?? 0)
   return {
     seed: state.seed,
+    score: Math.max(0, points - ECONOMY.breachPoints * state.breached),
     cash: state.cash,
     kilns: state.kiln - 1,
-    pieces,
+    fired,
+    delivered: deliveredPieces,
+    breached: state.breached,
     grades,
     bankrupt: state.reason === '断火',
   }
