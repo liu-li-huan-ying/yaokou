@@ -122,6 +122,9 @@
   box-shadow:
     inset 0 -8px 12px rgba(0, 0, 0, 0.18),
     inset 0 6px 8px rgba(255, 255, 255, 0.25);
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
 }
 .g-jar .txt {
   display: flex;
@@ -223,9 +226,9 @@
 .g-arch {
   position: relative;
   width: 100%;
-  max-width: 640px;
+  max-width: 600px;
   height: 100%;
-  max-height: 400px;
+  max-height: 322px;
   border-radius: 46% 46% 8px 8px / 62% 62% 8px 8px;
   background:
     repeating-linear-gradient(
@@ -237,10 +240,12 @@
   box-shadow:
     inset 0 0 60px rgba(0, 0, 0, 0.55),
     0 12px 26px rgba(46, 35, 27, 0.22);
+  /* 不裁掉的话，升起的窑门会整块悬在窑顶上盖住顶栏 */
+  overflow: hidden;
 }
 .g-chamber {
   position: absolute;
-  inset: 18px 18px 0;
+  inset: 16px 16px 0;
   border-radius: 44% 44% 6px 6px / 58% 58% 6px 6px;
   background:
     radial-gradient(
@@ -252,11 +257,25 @@
   box-shadow: inset 0 0 44px #000;
   transition: background var(--ui-dur-heavy) var(--ui-ease-heavy);
 }
+/* 窑门：平时升起让出窑膛（看得见窑位才谈得上装窑），点火才落下封死，开窑再升起 */
+.g-door {
+  position: absolute;
+  inset: 16px 16px 0;
+  z-index: 3;
+  border-radius: 44% 44% 6px 6px / 58% 58% 6px 6px;
+  background: linear-gradient(180deg, #5d4838, #2c211a);
+  box-shadow: inset 0 2px 0 rgba(255, 232, 190, 0.14);
+  transform: translateY(-104%);
+  transition: transform var(--ui-dur-heavy) var(--ui-ease-heavy);
+}
+.g-arch.sealed .g-door {
+  transform: translateY(0);
+}
 .g-slots {
   position: absolute;
-  left: 7%;
-  right: 7%;
-  bottom: 14%;
+  left: 6%;
+  right: 6%;
+  bottom: 11%;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
@@ -264,7 +283,7 @@
 }
 .g-slot {
   position: relative;
-  height: 132px;
+  height: 152px;
   border-radius: 8px;
   border: 1px dashed rgba(255, 232, 190, 0.26);
   background: transparent;
@@ -304,8 +323,8 @@
 }
 .g-slot canvas {
   display: block;
-  width: 84px;
-  height: 78px;
+  width: 116px;
+  height: 108px;
   opacity: 0;
   transform: translateY(10px) scale(0.94);
   transition:
@@ -316,19 +335,18 @@
   opacity: 1;
   transform: none;
 }
-.g-slot.reveal {
-  animation: g-pop var(--ui-dur-reveal) var(--ui-ease-enter);
+/* 出窑：器物被抬出窑床，定格后才亮评级 */
+.g-slot.taken {
+  transform: translateY(-18px) scale(1.06);
 }
-@keyframes g-pop {
-  from { transform: translateY(6px) scale(0.96); }
-  60% { transform: translateY(-4px) scale(1.04); }
-  to { transform: none; }
+.g-slot.taken canvas {
+  filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.45));
 }
 .g-slot .grade {
   position: absolute;
   top: 5px;
   right: 8px;
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.04em;
   opacity: 0;
   transition: opacity var(--ui-dur-settle) var(--ui-ease-settle);
