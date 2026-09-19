@@ -118,6 +118,59 @@ export function shapeOffsets(
   }
 }
 
+/**
+ * 窑具对缺陷概率的倍率。解锁了就一直上场——解锁本身就是回报，
+ * 不再另收按件工钱；倍率写在这里，好让 `run.ts` 不必知道这些 id。
+ */
+export const TOOL_EFFECT: Record<string, { runoff?: number; deform?: number }> = {
+  qi: { runoff: 0.5 },
+  zhiding: { deform: 0.7 },
+}
+
+export function toolMults(meta: MetaState): { runoffMult: number; deformMult: number } {
+  let runoffMult = 1
+  let deformMult = 1
+  for (const id of meta.unlocked) {
+    const e = TOOL_EFFECT[id]
+    if (e?.runoff !== undefined) runoffMult = Math.min(runoffMult, e.runoff)
+    if (e?.deform !== undefined) deformMult = Math.min(deformMult, e.deform)
+  }
+  return { runoffMult, deformMult }
+}
+
+/** 拱窑不用解锁，是每局都有的底 */
+export const DEFAULT_PLAN = 'plan-arch'
+
+/** 图纸的名字与话术：解锁表里只有要花钱的两张，拱窑补在这儿 */
+export function planLabel(id: string): { name: string; blurb: string } {
+  const u = unlockById(id)
+  if (u !== undefined) return { name: u.name, blurb: u.blurb }
+  return { name: '拱窑', blurb: '窑位温偏乱序散布，位置得自己摸。' }
+}
+
+export function plansOwned(meta: MetaState): string[] {
+  return [
+    DEFAULT_PLAN,
+    ...meta.unlocked.filter((id) => unlockById(id)?.kind === 'plan'),
+  ]
+}
+
+/**
+ * 局末结算：口碑按交付评级累计，违约要扣；`runs` 与 `bestScore` 一并更新。
+ * 参数写成结构类型，不 import `run.ts`，免生循环依赖。
+ */
+export function settleRun(
+  meta: MetaState,
+  summary: { score: number; grades: Record<string, number>; breached: number },
+): MetaState {
+  return {
+    ...meta,
+    renown: meta.renown + renownEarned(summary.grades, summary.breached),
+    runs: meta.runs + 1,
+    bestScore: Math.max(meta.bestScore, summary.score),
+  }
+}
+
 /** 存档是用户可编辑的外部输入，坏了要退回默认而不是崩 */
 export function loadMeta(store: Pick<Storage, 'getItem'> | null): MetaState {
   if (store === null) return { ...DEFAULT_META }

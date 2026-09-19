@@ -1,6 +1,7 @@
 import { type Curve, type Recipe } from './balance'
 import { deltaE2000, type Lab } from './deltae'
 import { fireGlaze, gradeOf } from './glaze'
+import { DEFAULT_PLAN, shapeOffsets } from './meta'
 import { modifierById, weatherFor, type Modifier, type Weather } from './modifiers'
 import { makeOffer, openingOffers, type Offer } from './orders'
 import { mulberry32 } from './rng'
@@ -100,6 +101,13 @@ export interface PieceResult {
 export interface RunState {
   seed: number
   modifier: Modifier
+  /** 本局图纸 id。存下来是为了让界面说实话：中途解锁的图纸要下一局才上身 */
+  planId: string
+  /** 本局窑位数：密檐窑图会少一位 */
+  capacity: number
+  /** 窑具对缺陷概率的倍率（匣钵只管流釉、支钉只管变形） */
+  runoffMult: number
+  deformMult: number
   /** 本窑天气，由 seed 与窑序决定 */
   weather: Weather
   kiln: number
@@ -117,14 +125,25 @@ export interface RunState {
   reason: string
 }
 
-export function newRun(seed: number, modifierId = 'steady'): RunState {
+export interface RunOptions {
+  planId?: string
+  runoffMult?: number
+  deformMult?: number
+}
+
+export function newRun(seed: number, modifierId = 'steady', opts: RunOptions = {}): RunState {
   const modifier = modifierById(modifierId)
   const rnd = mulberry32(seed)
   const [lo, hi] = modifier.offsetSpan
-  const kilnOffsets = Array.from({ length: ECONOMY.capacity }, () => lo + rnd() * (hi - lo))
+  const raw = Array.from({ length: ECONOMY.capacity }, () => lo + rnd() * (hi - lo))
+  const kilnOffsets = shapeOffsets(opts.planId, raw, lo, hi)
   return {
     seed,
     modifier,
+    planId: opts.planId ?? DEFAULT_PLAN,
+    capacity: kilnOffsets.length,
+    runoffMult: opts.runoffMult ?? 1,
+    deformMult: opts.deformMult ?? 1,
     weather: weatherFor(seed, 1),
     kiln: 1,
     cash: ECONOMY.startCash,
@@ -192,7 +211,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
   /** 先把真正能装进窑的件挑出来：制胎钱按件数算，所以件数要在扣钱之前定下来 */
   const taken: Record<number, number> = {}
   const plan: Array<{ orderId: number; position: number; order: Offer }> = []
-  loading.orderIds.slice(0, ECONOMY.capacity).forEach((orderId, position) => {
+  loading.orderIds.slice(0, state.capacity).forEach((orderId, position) => {
     const order = state.accepted.find((o) => o.id === orderId)
     if (order === undefined) return
     if ((state.delivered[orderId] ?? 0) + (taken[orderId] ?? 0) >= order.qty) return
@@ -210,7 +229,9 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
     const offset = state.kilnOffsets[position] ?? 0
     const result = fireGlaze(loading.recipe, curve, offset)
     const d = deltaE2000(result.lab, TARGETS[order.targetIndex].lab)
-    const risk = Math.max(result.runoffRisk, result.deformRisk) * ECONOMY.defectScale
+    const risk =
+      Math.max(result.runoffRisk * state.runoffMult, result.deformRisk * state.deformMult) *
+      ECONOMY.defectScale
     const scrapped = rnd() < risk
     const graded = scrapped
       ? { grade: '废品', crackBonus: 0 }

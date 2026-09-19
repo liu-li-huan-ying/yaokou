@@ -8,6 +8,22 @@ import {
 } from '../sim/balance'
 import type { Lab } from '../sim/deltae'
 import { fireGlaze } from '../sim/glaze'
+import {
+  DEFAULT_PLAN,
+  UNLOCKABLES,
+  buy,
+  canBuy,
+  drawGlazePool,
+  loadMeta,
+  planLabel,
+  plansOwned,
+  renownEarned,
+  saveMeta,
+  settleRun,
+  toolMults,
+  unlockById,
+  type MetaState,
+} from '../sim/meta'
 import { draftModifiers } from '../sim/modifiers'
 import {
   ECONOMY,
@@ -103,23 +119,40 @@ const JARS: Array<{ key: keyof Recipe; name: string; note: string; step: number;
 export interface GameEntry {
   seed: number
   modifier?: string
+  plan?: string
 }
 
 export function mountGame(host: HTMLElement, entry: GameEntry): void {
   let seed = entry.seed
   let modifierId = entry.modifier ?? draftModifiers(seed)[0].id
-  let run: RunState = newRun(seed, modifierId)
+  let meta: MetaState = loadMeta(localStorage)
+  /** 图纸由玩家挑，但只能是已解锁的；换局时才生效 */
+  const wantPlan = entry.plan ?? DEFAULT_PLAN
+  let planId = plansOwned(meta).includes(wantPlan) ? wantPlan : DEFAULT_PLAN
+  /** 本局开局可用的釉料池。锁住的料罐一律不许有读数，所以配方值要跟着清零 */
+  let pool = drawGlazePool(seed, meta)
+  let run: RunState = newRun(seed, modifierId, { planId, ...toolMults(meta) })
   let phase: 'ready' | 'firing' | 'result' = 'ready'
   let lastFired: PieceResult[] = []
+  /** 本局终了时进账的口碑，只为把那句话显示出来 */
+  let lastGain = 0
 
   const recipe: Recipe = { ...REF_RECIPE }
   const curve: Curve = { ...REF_CURVE }
   /** 固定长度的窑位托盘：null 表示该位空着。用稀疏数组会被 findIndex/filter 跳过洞 */
   const tray: Array<number | null> = Array.from({ length: ECONOMY.capacity }, () => null)
 
+  const inPool = (key: keyof Recipe): boolean => pool.includes(key)
+
+  function applyPool(): void {
+    for (const jar of JARS) if (!inPool(jar.key)) recipe[jar.key] = 0
+  }
+  applyPool()
+
   const loaded = (): number[] => tray.filter((x): x is number => x !== null)
+  /** 只在本局窑位数之内找空位：密檐窑图少一位，第 4 位是摆着看的 */
   const freeSlot = (): number => {
-    for (let i = 0; i < tray.length; i++) if (tray[i] === null) return i
+    for (let i = 0; i < Math.min(tray.length, run.capacity); i++) if (tray[i] === null) return i
     return -1
   }
   const clearTray = (): void => {
@@ -141,6 +174,12 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
   const ignite = h('button', 'g-ignite')
   ignite.type = 'button'
   ignite.addEventListener('click', () => {
+    if (run.over) {
+      seed += 1
+      modifierId = draftModifiers(seed)[0].id
+      startRun()
+      return
+    }
     if (phase === 'result') {
       phase = 'ready'
       lastFired = []
@@ -158,11 +197,15 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
   const modBtn = h('button')
   modBtn.type = 'button'
   modBtn.addEventListener('click', () => {
-    const pool = draftModifiers(seed)
-    const at = pool.findIndex((m) => m.id === modifierId)
-    modifierId = pool[(at + 1) % pool.length].id
-    restart(newRun(seed, modifierId))
+    const draft = draftModifiers(seed)
+    const at = draft.findIndex((m) => m.id === modifierId)
+    modifierId = draft[(at + 1) % draft.length].id
+    startRun()
   })
+
+  const yardBtn = h('button', 'g-yardbtn')
+  yardBtn.type = 'button'
+  yardBtn.addEventListener('click', () => toggleYard())
 
   const swapBtn = h('button')
   swapBtn.type = 'button'
@@ -170,15 +213,19 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
   swapBtn.addEventListener('click', () => {
     seed += 1
     modifierId = draftModifiers(seed)[0].id
-    restart(newRun(seed, modifierId))
+    startRun()
   })
 
-  function restart(next: RunState): void {
-    run = next
+  /** 换局的唯一入口：重掷釉料池、按已解锁窑具与所选图纸重建本局 */
+  function startRun(): void {
+    pool = drawGlazePool(seed, meta)
+    applyPool()
     clearTray()
     lastFired = []
+    lastGain = 0
     phase = 'ready'
     setFire(0)
+    run = newRun(seed, modifierId, { planId, ...toolMults(meta) })
     render()
   }
 
@@ -194,9 +241,12 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
   /* ── 左：釉料案 ───────────────────────── */
   bench.append(txt(h('h2', 'g-h'), '釉料案'))
   const jarVals: Record<string, HTMLElement> = {}
+  const jarRows: Array<HTMLElement> = []
+  const jarStepBtns: Array<HTMLButtonElement[]> = []
   for (const jar of JARS) {
     const spec = RECIPE_PARAMS.find((p) => p.key === jar.key)
     const row = h('div', 'g-jar')
+    jarRows.push(row)
     const ico = h('div', 'vessel-ico')
     ico.style.background = jar.swatch
     ico.title = '上下拖动倒料，或用 ± 微调'
@@ -207,6 +257,7 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     const lo = spec?.min ?? 0
     const hi = spec?.max ?? 8
     ico.addEventListener('pointerdown', (ev) => {
+      if (!inPool(jar.key)) return
       dragFrom = { y: ev.clientY, v: recipe[jar.key] }
       ico.setPointerCapture(ev.pointerId)
       ev.preventDefault()
@@ -222,14 +273,15 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     }
     ico.addEventListener('pointerup', endDrag)
     ico.addEventListener('pointercancel', endDrag)
-    const meta = h('div', 'txt')
-    meta.append(txt(h('span'), `${jar.name} ${jar.note}`))
+    const jarText = h('div', 'txt')
+    jarText.append(txt(h('span'), `${jar.name} ${jar.note}`))
     const val = txt(h('b'), '0')
-    meta.append(val)
+    jarText.append(val)
     jarVals[jar.key] = val
 
     const step = h('div', 'g-step')
     const bump = (dir: number) => {
+      if (!inPool(jar.key)) return
       const lo = spec?.min ?? 0
       const hi = spec?.max ?? 8
       const next = recipe[jar.key] + dir * jar.step
@@ -246,8 +298,10 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     down.addEventListener('click', () => bump(-1))
     step.append(up, down)
 
-    row.append(ico, meta, step)
+    row.append(ico, jarText, step)
+    row.dataset.key = jar.key
     bench.append(row)
+    jarStepBtns.push([up, down])
   }
 
   const tmaxSpec = CURVE_PARAMS.find((p) => p.key === 'tmax')
@@ -321,7 +375,7 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
   }
 
   function toggleSlot(index: number): void {
-    if (phase !== 'ready') return
+    if (phase !== 'ready' || index >= run.capacity) return
     if (tray[index] !== null) {
       tray[index] = null
       render()
@@ -470,6 +524,7 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
       run = next
       clearTray()
       phase = 'result'
+      if (next.over) settleRenown()
       revealSequentially()
     }, 60)
   }
@@ -503,10 +558,25 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     render()
   }
 
-  /* ── 渲染 ─────────────────────────────── */
+  /**
+   * 局末只在这里结算一次：`run.over` 只能由 `fireKiln` 造成，
+   * 而 `fireKiln` 只有这一处调用点。
+   */
+  function settleRenown(): void {
+    const sum = summarize(run)
+    lastGain = renownEarned(sum.grades, sum.breached)
+    meta = settleRun(meta, sum)
+    saveMeta(localStorage, meta)
+  }
+
+  /* ── 顶账条 ───────────────────────────── */
   function renderTop(): void {
     const sum = summarize(run)
+    const status = run.over
+      ? `局终（${run.reason}）· 本局口碑 +${lastGain} · 累计 ${meta.renown}`
+      : `今日 ${run.weather.name} · 降温 ${run.weather.coolingMult}× · 开局 ${run.modifier.name}`
     top.replaceChildren(
+      yardBtn,
       txt(h('span'), '窑'),
       txt(h('b'), `${Math.min(run.kiln, ECONOMY.maxKilns)} / ${ECONOMY.maxKilns}`),
       txt(h('span'), '现金'),
@@ -515,20 +585,25 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
       txt(h('b'), `${sum.score} 分`),
       txt(h('span'), '交付'),
       txt(h('b'), `${sum.delivered} 件`),
-      txt(
-        h('span', 'grow'),
-        `今日 ${run.weather.name} · 降温 ${run.weather.coolingMult}× · 开局 ${run.modifier.name}`,
-      ),
+      txt(h('span', 'grow'), status),
       modBtn,
       swapBtn,
       link,
     )
+    yardBtn.textContent = `窑场 · 口碑 ${meta.renown}`
+    /** 有东西买得起了才亮这颗点，别让人以为窑场是摆设 */
+    yardBtn.classList.toggle('g-owed', UNLOCKABLES.some((u) => canBuy(meta, u.id)))
     modBtn.textContent = `开局：${run.modifier.name} ▾`
-    link.value = `?seed=${seed}&m=${modifierId}`
+    link.value = `?seed=${seed}&m=${modifierId}&plan=${planId}`
   }
 
   function renderBench(): void {
-    for (const jar of JARS) txt(jarVals[jar.key] as HTMLElement, `${recipe[jar.key].toFixed(2)}%`)
+    JARS.forEach((jar, i) => {
+      const on = inPool(jar.key)
+      txt(jarVals[jar.key] as HTMLElement, on ? `${recipe[jar.key].toFixed(2)}%` : '未开罐')
+      jarRows[i].classList.toggle('locked', !on)
+      for (const b of jarStepBtns[i]) b.disabled = !on
+    })
     marker.style.bottom = `${(((curve.tmax - T_LO) / (T_HI - T_LO)) * 100).toFixed(1)}%`
     rulerTemp.textContent = `${curve.tmax}℃`
     rulerNote.textContent = `${curve.reduction > 0.5 ? '还原焰' : '氧化焰'} · 保温 ${curve.soak} 分`
@@ -540,6 +615,12 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     const firstEmpty = freeSlot()
     const canPick = phase === 'ready' && orderWithRoom() !== null
     slotNodes.forEach((node, i) => {
+      /** 密檐窑图少一位：多出来的窑位不是暗格，是根本不存在 */
+      if (i >= run.capacity) {
+        node.btn.hidden = true
+        return
+      }
+      node.btn.hidden = false
       node.hint.textContent = heatHint(run.kilnOffsets[i] ?? 0)
       const fired = phase === 'result' ? lastFired.find((p) => p.position === i) : undefined
       node.btn.classList.toggle('filled', tray[i] !== null || fired !== undefined)
@@ -570,16 +651,154 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     costLine.replaceChildren(
       txt(h('span'), '本窑耗 '),
       txt(h('b', canAfford ? '' : 'bad'), `${cost} 贯`),
-      txt(h('span'), ` · 已装 ${pieces} / ${ECONOMY.capacity} 件`),
+      txt(h('span'), ` · 已装 ${pieces} / ${run.capacity} 件`),
       canAfford ? txt(h('span'), '') : txt(h('span', 'bad'), ' · 烧完就断火'),
+      txt(h('span', 'g-tools'), toolNote()),
     )
-    ignite.textContent =
-      phase === 'result' ? '开下一窑' : phase === 'firing' ? '窑火正中' : '点 火'
+    ignite.textContent = run.over
+      ? '这一窑塌了 · 开新局'
+      : phase === 'result'
+        ? '开下一窑'
+        : phase === 'firing'
+          ? '窑火正中'
+          : '点 火'
     ignite.disabled = phase === 'firing'
     if (phase !== 'firing') {
       chamber.style.setProperty('--heat', '0')
       mouth.style.setProperty('--heat', '0')
     }
+  }
+
+  /** 窑具与图纸写在这一栏里：读的是本局快照，不是存档，中途买了不会骗人说已上身 */
+  function toolNote(): string {
+    const parts = [
+      planLabel(run.planId).name,
+      ...(run.runoffMult < 1 ? ['匣钵'] : []),
+      ...(run.deformMult < 1 ? ['支钉'] : []),
+    ]
+    return ` · ${parts.join(' · ')}`
+  }
+
+  /* ── 窑场：口碑花在哪儿 ───────────────── */
+  const yard = h('div', 'g-yard')
+  const yardPanel = h('div', 'g-yard-panel')
+  const yardHead = h('div', 'g-yard-head')
+  const yardSub = txt(h('span', 'sub'), '')
+  const yardClose = h('button')
+  const yardBody = h('div', 'g-yard-body')
+  const yardNote = txt(h('p', 'g-yard-note'), '')
+  yard.hidden = true
+  yardClose.type = 'button'
+  yardClose.textContent = '合上'
+  yardHead.append(txt(h('h2'), '窑场'), yardSub, yardClose)
+  yardPanel.append(yardHead, yardBody, yardNote)
+  yard.append(yardPanel)
+  host.append(yard)
+  yard.addEventListener('click', (ev) => {
+    if (ev.target === yard) showYard(false)
+  })
+  yardClose.addEventListener('click', () => showYard(false))
+
+  function showYard(on: boolean): void {
+    yard.hidden = !on
+    if (on) renderYard()
+  }
+  function toggleYard(): void {
+    showYard(yard.hidden === true)
+  }
+
+  function itemRow(
+    name: string,
+    blurb: string,
+    acts: HTMLElement[],
+  ): HTMLElement {
+    const row = h('div', 'g-yard-item')
+    const text = h('div', 'txt')
+    text.append(txt(h('b'), name), txt(h('span'), blurb))
+    const box = h('div', 'acts')
+    box.append(...acts)
+    row.append(text, box)
+    return row
+  }
+
+  function buyBtn(id: string): HTMLButtonElement {
+    const item = unlockById(id) as (typeof UNLOCKABLES)[number]
+    const b = h('button')
+    b.type = 'button'
+    b.textContent = `${item.cost} 口碑`
+    b.disabled = !canBuy(meta, id)
+    b.title = b.disabled ? '口碑不够' : '拿口碑换'
+    b.addEventListener('click', () => {
+      meta = buy(meta, id)
+      saveMeta(localStorage, meta)
+      renderYard()
+      renderTop()
+    })
+    return b
+  }
+
+  function ownedTag(label = '已有'): HTMLElement {
+    return txt(h('span', 'g-owned'), label)
+  }
+
+  function renderYard(): void {
+    yardSub.textContent = `口碑 ${meta.renown} · 开过 ${meta.runs} 局 · 最高 ${meta.bestScore} 分`
+    const groups: Array<[string, HTMLElement[]]> = [
+      ['釉料罐', []],
+      ['窑具', []],
+      ['窑炉图纸', []],
+    ]
+    const put = (label: string, row: HTMLElement): void => {
+      groups.find((g) => g[0] === label)?.[1].push(row)
+    }
+
+    for (const item of UNLOCKABLES) {
+      if (item.kind === 'plan') continue
+      put(
+        item.kind === 'glaze' ? '釉料罐' : '窑具',
+        itemRow(item.name, item.blurb, [
+          meta.unlocked.includes(item.id) ? ownedTag() : buyBtn(item.id),
+        ]),
+      )
+    }
+
+    /** 拱窑是每局都有的底，不在解锁表里，所以单独列在第一格 */
+    const arch = planLabel(DEFAULT_PLAN)
+    put('窑炉图纸', itemRow(arch.name, arch.blurb, planActs(DEFAULT_PLAN)))
+    for (const item of UNLOCKABLES.filter((u) => u.kind === 'plan')) {
+      put(
+        '窑炉图纸',
+        itemRow(
+          item.name,
+          item.blurb,
+          meta.unlocked.includes(item.id) ? planActs(item.id) : [buyBtn(item.id)],
+        ),
+      )
+    }
+
+    yardBody.replaceChildren(
+      ...groups.map(([label, rows]) => {
+        const box = h('div', 'g-yard-group')
+        box.append(txt(h('h3'), label), ...rows)
+        return box
+      }),
+    )
+
+    const names = pool.map((k) => JARS.find((j) => j.key === k)?.name ?? k)
+    yardNote.textContent = `本局罐里有的料：${names.join('、')}。新开的罐要等换一局才随得到；新图纸与窑具也从换局起才上身。`
+  }
+
+  function planActs(id: string): HTMLElement[] {
+    const b = h('button')
+    b.type = 'button'
+    b.textContent = id === planId ? '本局在用' : '换这张'
+    b.disabled = id === planId
+    b.addEventListener('click', () => {
+      planId = id
+      showYard(false)
+      startRun()
+    })
+    return [b]
   }
 
   function render(): void {

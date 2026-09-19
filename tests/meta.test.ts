@@ -1,16 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_META,
+  DEFAULT_PLAN,
   META_KEY,
   MIN_POOL,
+  TOOL_EFFECT,
   UNLOCKABLES,
   buy,
   canBuy,
   drawGlazePool,
   loadMeta,
+  planLabel,
+  plansOwned,
   renownEarned,
   saveMeta,
+  settleRun,
   shapeOffsets,
+  toolMults,
   type MetaState,
 } from '../src/sim/meta'
 
@@ -121,6 +127,57 @@ describe('窑炉图纸', () => {
     expect(out.length).toBe(raw.length - 1)
     const spread = (xs: number[]): number => Math.max(...xs) - Math.min(...xs)
     expect(spread(out)).toBeLessThan(spread(raw))
+  })
+})
+
+describe('本局上身的东西', () => {
+  it('没解锁窑具时倍率是 1，解锁后各管各的那一路', () => {
+    expect(toolMults(DEFAULT_META)).toEqual({ runoffMult: 1, deformMult: 1 })
+    expect(toolMults({ ...DEFAULT_META, unlocked: ['qi'] })).toEqual({
+      runoffMult: TOOL_EFFECT.qi.runoff,
+      deformMult: 1,
+    })
+    expect(toolMults({ ...DEFAULT_META, unlocked: ['zhiding'] })).toEqual({
+      runoffMult: 1,
+      deformMult: TOOL_EFFECT.zhiding.deform,
+    })
+  })
+
+  it('窑具倍率一律小于 1（解锁只给好处，但也不许变成必不出废品）', () => {
+    for (const e of Object.values(TOOL_EFFECT)) {
+      for (const v of Object.values(e)) {
+        expect(v).toBeGreaterThan(0)
+        expect(v).toBeLessThan(1)
+      }
+    }
+  })
+
+  it('图纸清单永远以拱窑打底，解锁一张多一张', () => {
+    expect(plansOwned(DEFAULT_META)).toEqual([DEFAULT_PLAN])
+    expect(plansOwned({ ...DEFAULT_META, unlocked: ['plan-tight', 'cu'] })).toEqual([
+      DEFAULT_PLAN,
+      'plan-tight',
+    ])
+  })
+
+  it('planLabel 认得不在解锁表里的拱窑', () => {
+    expect(planLabel(DEFAULT_PLAN).name).toBe('拱窑')
+    expect(planLabel('plan-tight').name).toBe('密檐窑图')
+  })
+
+  it('settleRun 加口碑、记局数与最高分，不碰已解锁的东西', () => {
+    const base: MetaState = { ...DEFAULT_META, unlocked: ['cu'] }
+    const after = settleRun(base, { score: 88, grades: { 珍品: 2, 正品: 1 }, breached: 1 })
+    expect(after).toEqual({
+      renown: 8,
+      unlocked: ['cu'],
+      runs: 1,
+      bestScore: 88,
+      notes: [],
+    })
+    const worse = settleRun(after, { score: 10, grades: {}, breached: 0 })
+    expect(worse.bestScore).toBe(88)
+    expect(worse.runs).toBe(2)
   })
 })
 

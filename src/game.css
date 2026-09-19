@@ -60,7 +60,7 @@
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   padding: 0 20px;
   border-bottom: 1px solid var(--rule);
   background: var(--paper-raised);
@@ -79,6 +79,26 @@
   padding: 2px 9px;
   font-size: 12px;
 }
+/* 攒够了口碑就点这颗，让它有地方可去 */
+.g-top .g-yardbtn {
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.g-top .g-yardbtn::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--grade-zhenpin);
+  opacity: 0;
+  transition: opacity var(--ui-dur-settle) var(--ui-ease-settle);
+}
+.g-top .g-yardbtn.g-owed::before { opacity: 1; }
 .g-link {
   border: 0;
   background: transparent;
@@ -483,4 +503,136 @@
     height: auto;
   }
   .g-orders { border-left: 0; border-top: 1px solid var(--rule); }
+}
+
+/* ── 未开罐的料：锁住要看得见，但格子不塌 ── */
+.g-jar .vessel-ico {
+  transition:
+    filter var(--ui-dur-settle) var(--ui-ease-settle),
+    opacity var(--ui-dur-settle) var(--ui-ease-settle);
+}
+.g-jar.locked .vessel-ico {
+  filter: grayscale(0.92);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.g-jar.locked .txt b {
+  color: var(--ink-soft);
+  font-weight: 400;
+  font-size: 11.5px;
+}
+.g-jar.locked .g-step { opacity: 0.28; }
+.g-cost .g-tools { opacity: 0.72; }
+
+/* ── 窑场：局与局之间的那张桌子 ─────────── */
+.g-yard {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(41, 37, 31, 0.42);
+  animation: g-yard-in var(--ui-dur-settle) var(--ui-ease-enter);
+}
+@keyframes g-yard-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.g-yard-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 36px));
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  background: var(--paper-raised);
+  border: 1px solid var(--ink);
+  box-shadow: 0 18px 44px rgba(41, 37, 31, 0.3);
+}
+.g-yard-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 13px 18px;
+  background: var(--paper-raised);
+  border-bottom: 1px solid var(--rule);
+}
+.g-yard-head h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+}
+.g-yard-head .sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.g-yard-head button { margin-left: auto; }
+.g-yard-body {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 4px 18px 10px;
+}
+.g-yard-group h3 {
+  margin: 12px 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+.g-yard-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+.g-yard-item .txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.g-yard-item .txt b { font-size: 13.5px; }
+.g-yard-item .txt span {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.g-yard-item .acts {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.g-yard-item button {
+  min-width: 74px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  border-radius: 3px;
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background var(--ui-dur-tap) var(--ui-ease-settle);
+}
+.g-yard-item button:hover:not(:disabled) { background: rgba(41, 37, 31, 0.08); }
+.g-yard-item button:disabled { opacity: 0.42; cursor: not-allowed; }
+.g-owned {
+  font-size: 11.5px;
+  color: var(--grade-zhengpin);
+  white-space: nowrap;
+}
+.g-yard-note {
+  margin: 0;
+  padding: 10px 18px 16px;
+  border-top: 1px solid var(--rule);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+@media (max-width: 900px) {
+  .g-yard-body { grid-template-columns: minmax(0, 1fr); }
 }
