@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>窑口 · 布局样张</title>
+    <style>
+      :root {
+        --paper: #efe7d8;
+        --paper-hi: #f7f1e4;
+        --ink: #241f1a;
+        --ink-soft: #7a6d5c;
+        --rule: #cdbfa8;
+        --brick: #7a5f4b;
+        --brick-dark: #4a382b;
+        --kiln-shadow: #2e231b;
+        --fire-core: #ffe6a4;
+        --fire-mid: #ef9f34;
+        --ember: #b4441a;
+        --gold: #9a7b2f;
+        --jade: #4a6b52;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 14px/1.55 system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 232px 1fr 268px;
+        grid-template-rows: 46px 1fr 96px;
+        grid-template-areas:
+          'top top top'
+          'bench kiln orders'
+          'bench fire orders';
+        height: 100vh;
+        gap: 0;
+      }
+
+      /* 顶部只留一行小账，不抢戏 */
+      .top {
+        grid-area: top;
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        padding: 0 22px;
+        border-bottom: 1px solid var(--rule);
+        background: var(--paper-hi);
+        font-size: 12.5px;
+        color: var(--ink-soft);
+      }
+      .top b { color: var(--ink); font-variant-numeric: tabular-nums; }
+      .top .title { font-size: 15px; letter-spacing: .16em; color: var(--ink); }
+      .top .spacer { margin-left: auto; }
+
+      /* 左：釉料案（三个料罐 + 一根窑温尺，细账收起来） */
+      .bench {
+        grid-area: bench;
+        border-right: 1px solid var(--rule);
+        background: linear-gradient(180deg, var(--paper-hi), var(--paper));
+        padding: 16px 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .bench h2, .orders h2 {
+        margin: 0;
+        font-size: 11.5px;
+        letter-spacing: .1em;
+        color: var(--ink-soft);
+        font-weight: 600;
+      }
+      .jar {
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        align-items: center;
+        gap: 10px;
+      }
+      .jar .body {
+        width: 44px; height: 46px;
+        border-radius: 6px 6px 14px 14px;
+        border: 1px solid rgba(0,0,0,.22);
+        box-shadow: inset 0 -8px 12px rgba(0,0,0,.18), inset 0 6px 8px rgba(255,255,255,.25);
+      }
+      .jar .meta { display: flex; flex-direction: column; }
+      .jar .meta span { color: var(--ink-soft); font-size: 11.5px; }
+      .jar .meta b { font-size: 13px; font-variant-numeric: tabular-nums; }
+      .stepper { display: flex; flex-direction: column; gap: 3px; }
+      .stepper button {
+        width: 26px; height: 20px; line-height: 1;
+        border: 1px solid var(--ink);
+        background: transparent;
+        border-radius: 3px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .ruler {
+        margin-top: 4px;
+        border-top: 1px dashed var(--rule);
+        padding-top: 12px;
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+      }
+      .ruler .bar {
+        position: relative;
+        width: 26px; height: 132px;
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        background: linear-gradient(0deg, #6b4a34, #d98b3a 62%, #f6e3b4);
+      }
+      .ruler .bar i {
+        position: absolute; left: -5px; right: -5px;
+        height: 2px; background: var(--ink);
+      }
+      .ruler .cap { display: flex; flex-direction: column; }
+      .ruler .cap span { color: var(--ink-soft); font-size: 11.5px; }
+      .ruler .cap b { font-size: 17px; font-variant-numeric: tabular-nums; }
+      .fine {
+        margin-top: auto;
+        font-size: 12px;
+        color: var(--ink-soft);
+        border: 1px dashed var(--rule);
+        border-radius: 4px;
+        padding: 8px 10px;
+      }
+
+      /* 中：窑 */
+      .kiln {
+        grid-area: kiln;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px 26px 0;
+      }
+      .arch {
+        position: relative;
+        width: 100%;
+        max-width: 620px;
+        height: 100%;
+        max-height: 380px;
+        background: linear-gradient(180deg, var(--brick), var(--brick-dark) 78%);
+        border-radius: 160px 160px 10px 10px;
+        box-shadow: inset 0 0 60px rgba(0,0,0,.5), 0 10px 24px rgba(46,35,27,.22);
+      }
+      .arch::before {
+        content: '';
+        position: absolute; inset: 16px 16px 0;
+        border-radius: 150px 150px 6px 6px;
+        background: radial-gradient(120% 90% at 50% 100%, rgba(255,180,80,.28), rgba(0,0,0,0) 62%),
+                    linear-gradient(180deg, #241a14, #3a2a20);
+        box-shadow: inset 0 0 40px #000;
+      }
+      .slots {
+        position: absolute; left: 8%; right: 8%; bottom: 16%;
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        z-index: 2;
+      }
+      .slot {
+        position: relative;
+        height: 116px;
+        border-radius: 8px;
+        border: 1px dashed rgba(255,232,190,.28);
+        display: flex; align-items: flex-end; justify-content: center;
+      }
+      .slot.filled { border-style: solid; border-color: rgba(255,232,190,.5); }
+      .vessel {
+        width: 74px; height: 58px;
+        border-radius: 50% 50% 46% 46% / 62% 62% 38% 38%;
+        background: radial-gradient(120% 120% at 34% 26%, #cfd8bd, #8f9f7e 58%, #6d7c60);
+        box-shadow: inset -6px -8px 14px rgba(0,0,0,.28), 0 4px 8px rgba(0,0,0,.35);
+      }
+      .slot .pos {
+        position: absolute; top: 5px; left: 7px;
+        font-size: 10.5px; letter-spacing: .08em;
+        color: rgba(255,236,204,.62);
+      }
+      .slot .hint {
+        position: absolute; bottom: 5px; left: 0; right: 0;
+        text-align: center; font-size: 10.5px;
+        color: rgba(255,236,204,.5);
+      }
+      .slot.pick { outline: 2px solid var(--fire-core); outline-offset: 2px; }
+
+      /* 底中：火 */
+      .fire {
+        grid-area: fire;
+        border-top: 1px solid var(--rule);
+        display: flex; align-items: center; gap: 16px;
+        padding: 0 26px;
+        background: var(--paper-hi);
+      }
+      .mouth {
+        flex: 0 0 auto;
+        width: 150px; height: 58px;
+        border-radius: 40px 40px 6px 6px;
+        background: radial-gradient(80% 120% at 50% 100%, var(--fire-core), var(--fire-mid) 46%, var(--ember) 78%, #3a1c0e);
+        box-shadow: 0 0 34px rgba(240,150,60,.55), inset 0 -8px 16px rgba(0,0,0,.4);
+      }
+      .ignite {
+        padding: 13px 30px;
+        border: 1px solid var(--ink);
+        border-radius: 4px;
+        background: var(--ink);
+        color: var(--paper-hi);
+        font: inherit; font-size: 15px; letter-spacing: .1em;
+        cursor: pointer;
+      }
+      .cost { color: var(--ink-soft); font-size: 12.5px; }
+      .cost b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+      /* 右：订单册页 */
+      .orders {
+        grid-area: orders;
+        border-left: 1px solid var(--rule);
+        background: linear-gradient(180deg, var(--paper-hi), var(--paper));
+        padding: 16px 16px 20px;
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      .leaf {
+        display: grid;
+        grid-template-columns: 38px 1fr;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        background: #fffcf4;
+        box-shadow: 0 1px 0 rgba(0,0,0,.05);
+      }
+      .leaf.next { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+      .leaf .glaze {
+        width: 38px; height: 46px;
+        border-radius: 3px;
+        background: radial-gradient(120% 100% at 35% 25%, #d7dfc6, #93a382 60%, #6f7f62);
+        border: 1px solid rgba(0,0,0,.18);
+      }
+      .leaf .txt { display: flex; flex-direction: column; gap: 2px; }
+      .leaf .txt b { font-size: 13.5px; }
+      .leaf .txt span { font-size: 11.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+      .leaf .due { color: var(--ember); }
+      .taken { font-size: 11.5px; color: var(--jade); letter-spacing: .04em; }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top">
+        <span class="title">窑口</span>
+        <span>第 <b>3</b> 窑 / 16</span>
+        <span>现金 <b>186</b> 贯</span>
+        <span>累计 <b>20</b> 分</span>
+        <span class="spacer"></span>
+        <span>今日 寒流 · 降温快</span>
+        <span>开局 稳火</span>
+      </header>
+
+      <aside class="bench">
+        <h2>釉料案</h2>
+        <div class="jar">
+          <div class="body" style="background: radial-gradient(120% 110% at 35% 25%, #b79a72, #7d5f3c 62%, #4c3823)"></div>
+          <div class="meta"><span>铁 还原则青</span><b>1.5%</b></div>
+          <div class="stepper"><button>+</button><button>−</button></div>
+        </div>
+        <div class="jar">
+          <div class="body" style="background: radial-gradient(120% 110% at 35% 25%, #86b3a2, #3f7d68 62%, #24493c)"></div>
+          <div class="meta"><span>铜 还原则红</span><b>0.0%</b></div>
+          <div class="stepper"><button>+</button><button>−</button></div>
+        </div>
+        <div class="jar">
+          <div class="body" style="background: radial-gradient(120% 110% at 35% 25%, #6b7fb5, #33457f 62%, #1c2748)"></div>
+          <div class="meta"><span>钴 一入即蓝</span><b>0.0%</b></div>
+          <div class="stepper"><button>+</button><button>−</button></div>
+        </div>
+
+        <div class="ruler">
+          <div class="bar"><i style="bottom: 58%"></i></div>
+          <div class="cap">
+            <span>最高温</span>
+            <b>1250℃</b>
+            <span>保温 20 分 · 还原中</span>
+          </div>
+        </div>
+
+        <div class="fine">看细账：还原起始、冷却速率、窑位温偏 ▾</div>
+      </aside>
+
+      <section class="kiln">
+        <div class="arch">
+          <div class="slots">
+            <div class="slot filled"><span class="pos">位 1</span><div class="vessel"></div><span class="hint">偏热</span></div>
+            <div class="slot filled"><span class="pos">位 2</span><div class="vessel"></div><span class="hint">偏冷</span></div>
+            <div class="slot pick"><span class="pos">位 3</span><span class="hint">空 · 点此落坯</span></div>
+            <div class="slot"><span class="pos">位 4</span><span class="hint">空</span></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="fire">
+        <div class="mouth"></div>
+        <button class="ignite">点 火</button>
+        <div class="cost">本窑耗 <b>37</b> 贯 · 已装 <b>2 / 4</b> 件 · 在手欠 <b>3</b> 件</div>
+      </footer>
+
+      <aside class="orders">
+        <h2>订单册</h2>
+        <div class="leaf next">
+          <div class="glaze"></div>
+          <div class="txt">
+            <b>茶叶末 × 2</b>
+            <span>53 贯 / 件</span>
+            <span class="due">还剩 3 窑</span>
+            <span class="taken">已接单 · 点窑位落坯</span>
+          </div>
+        </div>
+        <div class="leaf">
+          <div class="glaze" style="background: radial-gradient(120% 100% at 35% 25%, #dfe4d2, #a9b79c 60%, #83937a)"></div>
+          <div class="txt">
+            <b>天青 × 2</b>
+            <span>37 贯 / 件</span>
+            <span class="due">还剩 4 窑</span>
+            <span class="taken">已接单</span>
+          </div>
+        </div>
+        <div class="leaf">
+          <div class="glaze" style="background: radial-gradient(120% 100% at 35% 25%, #e6dcc6, #c8b795 60%, #a08a68)"></div>
+          <div class="txt">
+            <b>月白 × 1</b>
+            <span>21 贯 / 件</span>
+            <span>新帖 · 接不接？</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </body>
+</html>

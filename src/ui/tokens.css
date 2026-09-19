@@ -1,0 +1,49 @@
+/*
+ * 设计令牌：单一真源。组件里只准引用语义名，写裸曲线/裸时长即算破调性。
+ * 动效走 (a) 层：不起弹簧、不做跟手惯性，只保证"起落有重量、停得稳"。
+ */
+
+:root {
+  /* 纸与墨 */
+  --paper: #f3eee3;
+  --paper-raised: #fffdf8;
+  --ink: #29251f;
+  --ink-soft: #6b6157;
+  --rule: #d8cfbf;
+  --brick: #6d5849;
+  --brick-dark: #3b2f27;
+
+  /* 火与窑 */
+  --fire-core: #ffe9a8;
+  --fire-mid: #f0a63c;
+  --fire-edge: #b8481f;
+  --ember: #8c3a18;
+  --accent: #8c5a3c;
+
+  /* 评级 */
+  --grade-zhenpin: #9a7b2f;
+  --grade-zhengpin: #4a6b52;
+  --grade-cuqi: #7a6a55;
+  --grade-feipin: #8f3b2c;
+
+  /* 语义曲线：只有这四个名字可以在组件里出现 */
+  --ui-ease-enter: cubic-bezier(0.16, 0.84, 0.28, 1);
+  --ui-ease-settle: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --ui-ease-heavy: cubic-bezier(0.5, 0.02, 0.16, 1);
+  --ui-ease-out: cubic-bezier(0.3, 0.86, 0.4, 1);
+
+  /* 语义时长 */
+  --ui-dur-tap: 120ms;
+  --ui-dur-settle: 280ms;
+  --ui-dur-heavy: 620ms;
+  --ui-dur-reveal: 900ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ui-dur-tap: 1ms;
+    --ui-dur-settle: 1ms;
+    --ui-dur-heavy: 1ms;
+    --ui-dur-reveal: 1ms;
+  }
+}

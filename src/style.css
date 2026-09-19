@@ -1,10 +1,4 @@
-:root {
-  --paper: #f3eee3;
-  --ink: #29251f;
-  --ink-soft: #6b6157;
-  --rule: #d8cfbf;
-  --accent: #8c5a3c;
-}
+/* 令牌全部来自 ui/tokens.css，这里不再定义任何变量 */
 
 * {
   box-sizing: border-box;
