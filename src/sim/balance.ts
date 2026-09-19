@@ -15,8 +15,8 @@ export const FIRING = {
   opacityBase: 0.92,
   opacityMeltGain: 0.78,
   opacityLGain: 10,
-  opacityChromaKill: 0.55,
-  chromaCeil: 46,
+  opacityChromaKill: 0.35,
+  chromaCeil: 52,
   chromaKnee: 400,
   crackCoolRef: 6,
   runoffMelt: 0.78,
@@ -31,8 +31,8 @@ export interface OxideSpec {
   halfSat: number
   /** 满量时的 Lab 偏移尺度 */
   strength: number
-  /** 满量时的暗化量 */
-  dark: number
+  /** 指数吸收系数：L = L₀ · exp(-Σ kDark·w) */
+  kDark: number
   /** 氧化气氛下的色方向 */
   ox: { a: number; b: number }
   /** 还原气氛下的色方向 */
@@ -40,9 +40,9 @@ export interface OxideSpec {
 }
 
 export const OXIDES: OxideSpec[] = [
-  { key: 'fe', halfSat: 3.5, strength: 26, dark: 20, ox: { a: 4, b: 22 }, rd: { a: -12, b: 9 } },
-  { key: 'cu', halfSat: 2.0, strength: 30, dark: 22, ox: { a: -14, b: 14 }, rd: { a: 26, b: -4 } },
-  { key: 'co', halfSat: 0.6, strength: 34, dark: 36, ox: { a: 3, b: -30 }, rd: { a: -3, b: -32 } },
+  { key: 'fe', halfSat: 3.5, strength: 26, kDark: 0.9, ox: { a: 4, b: 22 }, rd: { a: -12, b: 9 } },
+  { key: 'cu', halfSat: 2.0, strength: 30, kDark: 0.75, ox: { a: -14, b: 14 }, rd: { a: 26, b: -4 } },
+  { key: 'co', halfSat: 0.6, strength: 34, kDark: 0.85, ox: { a: 3, b: -30 }, rd: { a: -3, b: -32 } },
 ]
 
 export interface Recipe {

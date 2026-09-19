@@ -47,7 +47,7 @@ export function fireGlaze(recipe: Recipe, curve: Curve, kilnOffset: number): Gla
 
   let sumA = 0
   let sumB = 0
-  let darken = 0
+  let absorb = 0
 
   for (const spec of OXIDES) {
     const w = (1 - Math.exp(-recipe[spec.key] / spec.halfSat)) * dissolve
@@ -55,11 +55,11 @@ export function fireGlaze(recipe: Recipe, curve: Curve, kilnOffset: number): Gla
     const dirB = spec.ox.b + (spec.rd.b - spec.ox.b) * redox
     sumA += w * spec.strength * dirA
     sumB += w * spec.strength * dirB
-    darken += w * spec.dark
+    absorb += w * spec.kDark
   }
 
   const lab: Lab = {
-    l: FIRING.baseL + (opacity - 0.5) * FIRING.opacityLGain - darken,
+    l: (FIRING.baseL + (opacity - 0.5) * FIRING.opacityLGain) * Math.exp(-absorb),
     a: FIRING.baseA + desaturate * FIRING.chromaCeil * Math.tanh(sumA / FIRING.chromaKnee),
     b: FIRING.baseB + desaturate * FIRING.chromaCeil * Math.tanh(sumB / FIRING.chromaKnee),
   }
