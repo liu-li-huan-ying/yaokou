@@ -70,7 +70,8 @@ export interface Curve {
 }
 
 export interface ParamSpec<T> {
-  key: keyof T
+  /** 限定为字符串键，调用点要拿它拼 DOM id */
+  key: keyof T & string
   label: string
   min: number
   max: number
