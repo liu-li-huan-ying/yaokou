@@ -1,10 +1,14 @@
-/* 令牌全部来自 ui/tokens.css，这里不再定义任何变量 */
+/*
+ * 全局与共用件。令牌一律来自 ui/tokens.css，这里不定义任何变量、不写裸色。
+ * .slider / input[type=range] / button 基础样式被两屏共用（游戏屏的"看细账"也用 .slider），
+ * 所以留在这份全局表里，game.css 只做覆盖。
+ */
 
 * {
   box-sizing: border-box;
 }
 
-/* 视图切换靠 hidden 属性，但作者样式里的 display:grid 会盖掉 UA 的 [hidden]{display:none} */
+/* 视图切换靠 hidden 属性；作者样式里的 display:grid 会盖掉 UA 的 [hidden]{display:none} */
 [hidden] {
   display: none !important;
 }
@@ -24,68 +28,108 @@ body {
   padding: 10px 24px 64px;
 }
 
-.stage {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-#patch {
-  width: 320px;
-  height: 320px;
+button {
+  padding: 5px 13px;
   border: 1px solid var(--rule);
-  background: #fffdf8;
+  border-radius: 3px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--ui-dur-tap) var(--ui-ease-settle),
+    background var(--ui-dur-tap) var(--ui-ease-settle);
+}
+button:hover {
+  border-color: var(--ink);
+}
+button:active {
+  transform: translateY(1px);
 }
 
-#readout {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 14px;
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-#readout dt {
-  color: var(--ink-soft);
-}
-
-#readout dd {
-  margin: 0;
-}
-
-.controls h2 {
-  margin: 22px 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--ink-soft);
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 4px;
-}
-
-.controls h2:first-child {
-  margin-top: 0;
-}
-
+/* ── 共用：滑杆 ─────────────────────────── */
 .slider {
   display: grid;
   grid-template-columns: 88px 1fr 68px;
   align-items: center;
   gap: 10px;
 }
-
 .slider label {
-  color: var(--ink);
+  font-size: 12.5px;
 }
-
 .slider output {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
   color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+input[type='range'] {
+  accent-color: var(--ember);
+  height: 18px;
 }
 
-input[type='range'] {
-  accent-color: var(--accent);
+/* ── 配釉台 ─────────────────────────────── */
+.split {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 30px;
+  align-items: start;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#patch {
+  width: 320px;
+  height: 320px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper-raised);
+}
+
+#readout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 16px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper-raised);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+#readout dt {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+#readout dd {
+  margin: 0;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--paper-raised), var(--paper));
+}
+
+.controls h2 {
+  margin: 16px 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 5px;
+}
+.controls h2:first-child {
+  margin-top: 0;
 }
 
 #targets {
@@ -94,20 +138,20 @@ input[type='range'] {
   gap: 8px;
 }
 
-.chip {
+/* 目标色片：方片而不是胶囊，才和订单册页同一族 */
+#targets .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 9px 3px 4px;
+  gap: 7px;
+  padding: 3px 9px 3px 5px;
   border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: #fffdf8;
+  border-radius: 3px;
+  background: var(--paper-raised);
   color: var(--ink);
+  font-size: 12.5px;
   cursor: pointer;
-  font: inherit;
 }
-
-.chip[aria-pressed='true'] {
+#targets .chip[aria-pressed='true'] {
   border-color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--ink);
 }
@@ -115,32 +159,25 @@ input[type='range'] {
 .swatch {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: 2px;
   border: 1px solid rgba(0, 0, 0, 0.18);
+  flex: 0 0 auto;
 }
 
 .row {
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-button {
-  padding: 6px 14px;
-  border: 1px solid var(--ink);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-}
-
-button:hover {
-  background: rgba(41, 37, 31, 0.06);
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .note {
-  margin-top: 18px;
+  margin: 14px 0 0;
   color: var(--ink-soft);
   font-size: 12px;
+}
+
+@media (max-width: 860px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

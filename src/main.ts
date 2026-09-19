@@ -181,4 +181,4 @@ tabGame.addEventListener('click', () => showView('game'))
 tabColorizer.addEventListener('click', () => showView('colorizer'))
 
 renderColorizer()
-showView('game')
+showView(params.get('view') === 'colorizer' ? 'colorizer' : 'game')
