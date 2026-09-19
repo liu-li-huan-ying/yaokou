@@ -158,9 +158,17 @@ resetBtn.addEventListener('click', () => {
 
 let gameMounted = false
 
+/** 从地址栏取开局参数：?seed=…&m=…  同一串链接必然开出同一局 */
+const params = new URLSearchParams(location.search)
+const rawSeed = Number(params.get('seed'))
+const entry = {
+  seed: Number.isFinite(rawSeed) && rawSeed > 0 ? Math.floor(rawSeed) : 20260919,
+  modifier: params.get('m') ?? undefined,
+}
+
 function showView(which: 'game' | 'colorizer'): void {
   if (which === 'game' && !gameMounted) {
-    mountGame(viewGame)
+    mountGame(viewGame, entry)
     gameMounted = true
   }
   viewGame.hidden = which !== 'game'

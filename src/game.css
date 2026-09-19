@@ -228,6 +228,46 @@ button:disabled {
   font-size: 13px;
 }
 
+.hint {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.picker {
+  border: 1px solid var(--rule);
+  background: #fffdf8;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+}
+
+.picker h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.share-row .k {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.share {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  background: #fffdf8;
+  color: var(--ink-soft);
+  font: 12px/1.6 ui-monospace, Consolas, monospace;
+  padding: 3px 6px;
+}
+
 .results {
   display: flex;
   flex-direction: column;

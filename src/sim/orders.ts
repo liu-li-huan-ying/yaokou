@@ -28,6 +28,14 @@ export interface Offer {
   pricePerPiece: number
 }
 
+/** 开局修饰符通过这组规则影响出单，orders.ts 本身不认识修饰符 */
+export interface OfferRules {
+  priceMult: number
+  deadlineShift: number
+}
+
+export const DEFAULT_RULES: OfferRules = { priceMult: 1, deadlineShift: 0 }
+
 /**
  * 生成一张新订单。rnd 由调用方注入，保证整局可重放。
  *
@@ -40,19 +48,23 @@ export function makeOffer(
   kiln: number,
   slot: number,
   bias: number[] = [],
+  rules: OfferRules = DEFAULT_RULES,
 ): Offer {
   const useBias = bias.length > 0 && rnd() < 0.55
   const targetIndex = useBias
     ? bias[Math.floor(rnd() * bias.length) % bias.length]
     : Math.floor(rnd() * TARGETS.length) % TARGETS.length
   const qty = 1 + Math.floor(rnd() * 3)
-  const deadlineKiln = kiln + 3 + Math.floor(rnd() * 4)
+  const deadlineKiln = Math.max(
+    kiln + 1,
+    kiln + 3 + Math.floor(rnd() * 4) + rules.deadlineShift,
+  )
   const base = BASE_PRICE[TARGETS[targetIndex].name]
-  const pricePerPiece = Math.round(base * (0.85 + rnd() * 0.35))
+  const pricePerPiece = Math.round(base * (0.85 + rnd() * 0.35) * rules.priceMult)
   return { id: kiln * 10 + slot, targetIndex, qty, deadlineKiln, pricePerPiece }
 }
 
-export function openingOffers(seed: number): Offer[] {
+export function openingOffers(seed: number, rules: OfferRules = DEFAULT_RULES): Offer[] {
   const rnd = mulberry32(seed)
-  return [makeOffer(rnd, 1, 0), makeOffer(rnd, 1, 1)]
+  return [makeOffer(rnd, 1, 0, [], rules), makeOffer(rnd, 1, 1, [], rules)]
 }

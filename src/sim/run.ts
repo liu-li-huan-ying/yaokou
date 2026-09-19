@@ -1,6 +1,7 @@
 import { type Curve, type Recipe } from './balance'
 import { deltaE2000, type Lab } from './deltae'
 import { fireGlaze, gradeOf } from './glaze'
+import { modifierById, weatherFor, type Modifier, type Weather } from './modifiers'
 import { makeOffer, openingOffers, type Offer } from './orders'
 import { mulberry32 } from './rng'
 import { TARGETS } from './targets'
@@ -21,7 +22,7 @@ export const ECONOMY = {
   scrapFineRate: 0.3,
   /** 未交付部分按此比例罚 */
   breachFineRate: 0.4,
-  /** 窑位温偏范围。上一轮 ±22/+18 太窄：搜索解在四个位上几乎都还落在正品档，风险不真实 */
+  /** 窑位温偏兜底范围（无修饰符时用） */
   offsetMin: -38,
   offsetMax: 32,
   /** 缺陷判定：把流釉/变形风险折算成实际报废概率的系数 */
@@ -30,6 +31,11 @@ export const ECONOMY = {
   offerBoard: 6,
   /** 每件违约扣的分 */
   breachPoints: 3,
+  /** 小开片是审美加分的区间 */
+  crackSweet: [0.2, 0.55] as [number, number],
+  crackBonusPoints: 2,
+  /** 开片重到这份上降一档 */
+  heavyCrack: 0.8,
 } as const
 
 export const GRADE_MULT: Record<string, number> = {
@@ -40,15 +46,34 @@ export const GRADE_MULT: Record<string, number> = {
 }
 
 /**
- * 结算分。分数只认交付，不认钱包——上一版按剩余现金排名，结果"每窑烧空、
- * 一分不赚但也没亏"的躺平（+10）能在部分种子上赢过玩砸了的破产者（负数）。
- * 破产的人保留他已经烧出来的东西，但一分交付都没有的人必须垫底。
+ * 局末分数只认交付。`分 = Σ(件分 + 开片加分) − 3 × 违约件数`，下限 0。
+ * 先前按剩余现金排过一次名，结果"不接单、每窑烧空、+10"的躺平
+ * 能在部分种子上赢过玩砸了的破产者（负数）——那是计分口径的错。
  */
 export const GRADE_POINTS: Record<string, number> = {
   珍品: 10,
   正品: 6,
   粗器: 2,
   废品: 0,
+}
+
+const GRADE_ORDER = ['珍品', '正品', '粗器', '废品'] as const
+
+/** 开片太重就把评级降一档 */
+function downgrade(grade: string): string {
+  const i = GRADE_ORDER.indexOf(grade as (typeof GRADE_ORDER)[number])
+  return GRADE_ORDER[Math.min(GRADE_ORDER.length - 1, i + 1)]
+}
+
+export function gradeWithCracks(
+  deltaE: number,
+  crackIndex: number,
+): { grade: string; crackBonus: number } {
+  let grade = gradeOf(deltaE)
+  if (crackIndex > ECONOMY.heavyCrack) grade = downgrade(grade)
+  const [lo, hi] = ECONOMY.crackSweet
+  const crackBonus = crackIndex >= lo && crackIndex <= hi ? ECONOMY.crackBonusPoints : 0
+  return { grade, crackBonus }
 }
 
 export interface Loading {
@@ -67,13 +92,16 @@ export interface PieceResult {
   revenue: number
   /** 这一件实际烧出来的 Lab。必须存下来：事后再用当前配方重算会得到另一个颜色 */
   lab: Lab
-  /** 同一窑的冷却条件对所有件一致，但 UI 画开片要用 */
   crackIndex: number
+  crackBonus: number
   targetIndex: number
 }
 
 export interface RunState {
   seed: number
+  modifier: Modifier
+  /** 本窑天气，由 seed 与窑序决定 */
+  weather: Weather
   kiln: number
   cash: number
   offers: Offer[]
@@ -89,18 +117,21 @@ export interface RunState {
   reason: string
 }
 
-export function newRun(seed: number): RunState {
+export function newRun(seed: number, modifierId = 'steady'): RunState {
+  const modifier = modifierById(modifierId)
   const rnd = mulberry32(seed)
-  const span = ECONOMY.offsetMax - ECONOMY.offsetMin
-  const kilnOffsets = Array.from(
-    { length: ECONOMY.capacity },
-    () => ECONOMY.offsetMin + rnd() * span,
-  )
+  const [lo, hi] = modifier.offsetSpan
+  const kilnOffsets = Array.from({ length: ECONOMY.capacity }, () => lo + rnd() * (hi - lo))
   return {
     seed,
+    modifier,
+    weather: weatherFor(seed, 1),
     kiln: 1,
     cash: ECONOMY.startCash,
-    offers: openingOffers(seed),
+    offers: openingOffers(seed, {
+      priceMult: modifier.priceMult,
+      deadlineShift: modifier.deadlineShift,
+    }),
     accepted: [],
     delivered: {},
     kilnOffsets,
@@ -145,11 +176,18 @@ export function outstanding(state: RunState, orderId: number): number {
 }
 
 /**
- * 烧一窑：扣料钱与燃料，逐件按各自窑位温偏出呈色、判缺陷、按 ΔE2000 结算，
- * 再处理交齐/违约/挂单过期/新单，最后判是否断火。
+ * 烧一窑：天气与修饰符先折进曲线，再扣料钱与燃料，逐件按各自窑位温偏出呈色、
+ * 判缺陷、按 ΔE2000 与开片定级结算，然后处理交齐/违约/挂单过期/新单，最后判是否断火。
  */
 export function fireKiln(state: RunState, loading: Loading): RunState {
   if (state.over) return state
+
+  const weather = weatherFor(state.seed, state.kiln)
+  const curve: Curve = {
+    ...loading.curve,
+    cooling: loading.curve.cooling * weather.coolingMult,
+    reduction: Math.min(1, loading.curve.reduction * state.modifier.redoxMult),
+  }
 
   /** 先把真正能装进窑的件挑出来：制胎钱按件数算，所以件数要在扣钱之前定下来 */
   const taken: Record<number, number> = {}
@@ -162,7 +200,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
     plan.push({ orderId, position, order })
   })
 
-  const cost = fireCost(loading.recipe, loading.curve, plan.length)
+  const cost = fireCost(loading.recipe, curve, plan.length)
   const rnd = mulberry32(state.seed * 1000003 + state.kiln * 7919)
   const delivered: Record<number, number> = { ...state.delivered }
   const pieces: PieceResult[] = []
@@ -170,13 +208,15 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
 
   for (const { orderId, position, order } of plan) {
     const offset = state.kilnOffsets[position] ?? 0
-    const result = fireGlaze(loading.recipe, loading.curve, offset)
+    const result = fireGlaze(loading.recipe, curve, offset)
     const d = deltaE2000(result.lab, TARGETS[order.targetIndex].lab)
     const risk = Math.max(result.runoffRisk, result.deformRisk) * ECONOMY.defectScale
     const scrapped = rnd() < risk
-    const grade = scrapped ? '废品' : gradeOf(d)
-    const gross = Math.round(order.pricePerPiece * (GRADE_MULT[grade] ?? 0))
-    const fine = grade === '废品' ? Math.round(order.pricePerPiece * ECONOMY.scrapFineRate) : 0
+    const graded = scrapped
+      ? { grade: '废品', crackBonus: 0 }
+      : gradeWithCracks(d, result.crackIndex)
+    const gross = Math.round(order.pricePerPiece * (GRADE_MULT[graded.grade] ?? 0))
+    const fine = graded.grade === '废品' ? Math.round(order.pricePerPiece * ECONOMY.scrapFineRate) : 0
     const money = gross - fine
 
     revenue += money
@@ -184,12 +224,13 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
     pieces.push({
       orderId,
       position,
-      grade,
+      grade: graded.grade,
       deltaE: d,
       offset,
       revenue: money,
       lab: result.lab,
       crackIndex: result.crackIndex,
+      crackBonus: graded.crackBonus,
       targetIndex: order.targetIndex,
     })
   }
@@ -213,8 +254,12 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
   const nextKiln = state.kiln + 1
   const offerRnd = mulberry32(state.seed * 7 + nextKiln * 13)
   const bias = stillOpen.map((o) => o.targetIndex)
-  const fresh: Offer[] = [makeOffer(offerRnd, nextKiln, 0, bias)]
-  if (offerRnd() < 0.45) fresh.push(makeOffer(offerRnd, nextKiln, 1, bias))
+  const rules = {
+    priceMult: state.modifier.priceMult,
+    deadlineShift: state.modifier.deadlineShift,
+  }
+  const fresh: Offer[] = [makeOffer(offerRnd, nextKiln, 0, bias, rules)]
+  if (offerRnd() < 0.45) fresh.push(makeOffer(offerRnd, nextKiln, 1, bias, rules))
   const offers = [...state.offers.filter((o) => o.deadlineKiln > nextKiln), ...fresh].slice(
     -ECONOMY.offerBoard,
   )
@@ -225,6 +270,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
 
   return {
     ...state,
+    weather,
     kiln: nextKiln,
     cash,
     offers,
@@ -239,6 +285,8 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
 
 export interface RunSummary {
   seed: number
+  modifier: string
+  weatherSeen: number
   score: number
   cash: number
   kilns: number
@@ -258,13 +306,15 @@ export function summarize(state: RunState): RunSummary {
   for (const kiln of state.history) {
     for (const p of kiln) {
       grades[p.grade] = (grades[p.grade] ?? 0) + 1
-      points += GRADE_POINTS[p.grade] ?? 0
+      points += (GRADE_POINTS[p.grade] ?? 0) + p.crackBonus
       fired += 1
     }
   }
   const deliveredPieces = fired - (grades['废品'] ?? 0)
   return {
     seed: state.seed,
+    modifier: state.modifier.name,
+    weatherSeen: state.history.length,
     score: Math.max(0, points - ECONOMY.breachPoints * state.breached),
     cash: state.cash,
     kilns: state.kiln - 1,

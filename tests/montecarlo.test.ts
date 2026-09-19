@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { draftModifiers } from '../src/sim/modifiers'
 import { POLICIES } from '../src/sim/policies'
 import { newRun, summarize, type RunSummary } from '../src/sim/run'
 
@@ -8,7 +9,9 @@ const GUARD = 40
 function playOne(policyName: string, seed: number): RunSummary {
   const policy = POLICIES.find((p) => p.name === policyName)
   if (policy === undefined) throw new Error(`无此策略 ${policyName}`)
-  let state = newRun(seed)
+  // 按 seed 抽开局修饰符，与玩家实际开局一致：不抽就等于 MC 只测了默认那张"稳火"
+  const state0 = newRun(seed, draftModifiers(seed)[0].id)
+  let state = state0
   let steps = 0
   while (!state.over && steps < GUARD) {
     state = policy.play(state)
