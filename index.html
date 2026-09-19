@@ -3,31 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>窑口 · 配釉台</title>
+    <title>窑口</title>
     <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/game.css" />
   </head>
   <body>
+    <header class="topbar">
+      <h1>窑口</h1>
+      <nav class="tabs" aria-label="视图">
+        <button id="tab-game" class="tab" type="button" aria-selected="true">开一窑</button>
+        <button id="tab-colorizer" class="tab" type="button" aria-selected="false">配釉台</button>
+      </nav>
+    </header>
     <main id="app">
-      <section class="stage">
-        <canvas id="patch" width="320" height="320" aria-label="釉色预览"></canvas>
-        <dl id="readout"></dl>
-      </section>
-      <section class="controls">
-        <h2>釉料</h2>
-        <div id="recipe"></div>
-        <h2>烧成曲线</h2>
-        <div id="curve"></div>
-        <h2>窑位</h2>
-        <div id="offset"></div>
-        <h2>目标釉色</h2>
-        <div id="targets"></div>
-        <div class="row">
-          <button id="solve" type="button">反推配方</button>
-          <button id="reset" type="button">复位</button>
+      <section id="view-game"></section>
+      <section id="view-colorizer" class="split" hidden>
+        <div class="stage">
+          <canvas id="patch" width="320" height="320" aria-label="釉色预览"></canvas>
+          <dl id="readout"></dl>
         </div>
-        <p class="note">
-          呈色为自洽的虚构化学，不声称复原真实工艺。运行时不联网，无外部字体。
-        </p>
+        <div class="controls">
+          <h2>釉料</h2>
+          <div id="recipe"></div>
+          <h2>烧成曲线</h2>
+          <div id="curve"></div>
+          <h2>窑位</h2>
+          <div id="offset"></div>
+          <h2>目标釉色</h2>
+          <div id="targets"></div>
+          <div class="row">
+            <button id="solve" type="button">反推配方</button>
+            <button id="reset" type="button">复位</button>
+          </div>
+          <p class="note">
+            呈色为自洽的虚构化学，不声称复原真实工艺。运行时不联网，无外部字体。
+          </p>
+        </div>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

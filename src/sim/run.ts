@@ -1,5 +1,5 @@
 import { type Curve, type Recipe } from './balance'
-import { deltaE2000 } from './deltae'
+import { deltaE2000, type Lab } from './deltae'
 import { fireGlaze, gradeOf } from './glaze'
 import { makeOffer, openingOffers, type Offer } from './orders'
 import { mulberry32 } from './rng'
@@ -65,6 +65,11 @@ export interface PieceResult {
   deltaE: number
   offset: number
   revenue: number
+  /** 这一件实际烧出来的 Lab。必须存下来：事后再用当前配方重算会得到另一个颜色 */
+  lab: Lab
+  /** 同一窑的冷却条件对所有件一致，但 UI 画开片要用 */
+  crackIndex: number
+  targetIndex: number
 }
 
 export interface RunState {
@@ -176,7 +181,17 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
 
     revenue += money
     delivered[orderId] = (delivered[orderId] ?? 0) + 1
-    pieces.push({ orderId, position, grade, deltaE: d, offset, revenue: money })
+    pieces.push({
+      orderId,
+      position,
+      grade,
+      deltaE: d,
+      offset,
+      revenue: money,
+      lab: result.lab,
+      crackIndex: result.crackIndex,
+      targetIndex: order.targetIndex,
+    })
   }
 
   let cash = state.cash - cost + revenue
