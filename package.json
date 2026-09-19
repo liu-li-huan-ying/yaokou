@@ -2,6 +2,7 @@
   "name": "yaokou",
   "private": true,
   "version": "0.0.1",
+  "license": "MIT",
   "type": "module",
   "description": "窑口 — 窑炉经营 Roguelite（网页单机，运行时不联网）",
   "scripts": {
