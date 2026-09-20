@@ -572,7 +572,7 @@
 .g-yard-head button { margin-left: auto; }
 .g-yard-body {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 20px;
   padding: 4px 18px 10px;
 }
@@ -583,6 +583,8 @@
   letter-spacing: 0.1em;
   color: var(--ink-soft);
 }
+/* 笔记一行得装下"名 + 六个数 + 两个键"，独占整行才有地方摊 */
+.g-yard-group.g-wide { grid-column: 1 / -1; }
 .g-yard-item {
   display: flex;
   align-items: center;
@@ -624,6 +626,20 @@
   font-size: 11.5px;
   color: var(--grade-zhengpin);
   white-space: nowrap;
+}
+.g-yard-item input.g-note-label {
+  width: 96px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink);
+}
+.g-yard-item input.g-note-label:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 .g-yard-note {
   margin: 0;

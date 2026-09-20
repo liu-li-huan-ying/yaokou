@@ -4,17 +4,21 @@ import {
   REF_CURVE,
   REF_RECIPE,
   type Curve,
+  type ParamSpec,
   type Recipe,
 } from '../sim/balance'
 import type { Lab } from '../sim/deltae'
 import { fireGlaze } from '../sim/glaze'
 import {
   DEFAULT_PLAN,
+  MAX_NOTES,
   UNLOCKABLES,
   buy,
   canBuy,
   drawGlazePool,
   loadMeta,
+  noteToRecipe,
+  parseNotes,
   planLabel,
   plansOwned,
   renownEarned,
@@ -22,6 +26,7 @@ import {
   settleRun,
   toolMults,
   unlockById,
+  type GlazeNote,
   type MetaState,
 } from '../sim/meta'
 import { draftModifiers } from '../sim/modifiers'
@@ -743,13 +748,14 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
 
   function renderYard(): void {
     yardSub.textContent = `口碑 ${meta.renown} · 开过 ${meta.runs} 局 · 最高 ${meta.bestScore} 分`
-    const groups: Array<[string, HTMLElement[]]> = [
-      ['釉料罐', []],
-      ['窑具', []],
-      ['窑炉图纸', []],
+    const groups: Array<{ label: string; rows: HTMLElement[]; wide?: boolean }> = [
+      { label: '釉料罐', rows: [] },
+      { label: '窑具', rows: [] },
+      { label: '窑炉图纸', rows: [] },
+      { label: '配方笔记', rows: noteRows(), wide: true },
     ]
     const put = (label: string, row: HTMLElement): void => {
-      groups.find((g) => g[0] === label)?.[1].push(row)
+      groups.find((g) => g.label === label)?.rows.push(row)
     }
 
     for (const item of UNLOCKABLES) {
@@ -777,9 +783,9 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     }
 
     yardBody.replaceChildren(
-      ...groups.map(([label, rows]) => {
-        const box = h('div', 'g-yard-group')
-        box.append(txt(h('h3'), label), ...rows)
+      ...groups.map((g) => {
+        const box = h('div', g.wide ? 'g-yard-group g-wide' : 'g-yard-group')
+        box.append(txt(h('h3'), g.label), ...g.rows)
         return box
       }),
     )
@@ -799,6 +805,96 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
       startRun()
     })
     return [b]
+  }
+
+  /** 存档是用户能自己改的外部输入，落回案上之前按滑杆量程再夹一遍 */
+  function clampParam<T>(
+    specs: Array<ParamSpec<T>>,
+    key: keyof T & string,
+    v: number,
+  ): number {
+    const s = specs.find((p) => p.key === key)
+    return s === undefined ? v : Math.min(s.max, Math.max(s.min, v))
+  }
+
+  /** 配方笔记：局末分数不保留，但你自己试出来的方子跨局留着 */
+  function noteRows(): HTMLElement[] {
+    const labelIn = h('input', 'g-note-label')
+    labelIn.type = 'text'
+    labelIn.maxLength = 24
+    labelIn.placeholder = '给这方起个名'
+    labelIn.value = `方子 ${meta.notes.length + 1}`
+
+    const full = meta.notes.length >= MAX_NOTES
+    const keep = h('button')
+    keep.type = 'button'
+    keep.textContent = '记下'
+    keep.disabled = full
+    keep.title = full ? `笔记满了，上限 ${MAX_NOTES} 条` : '把釉料案与窑温尺上现在的数记进存档'
+    keep.addEventListener('click', () => {
+      const label = labelIn.value.trim() || `方子 ${meta.notes.length + 1}`
+      const note: GlazeNote = {
+        label,
+        fe: recipe.fe,
+        cu: recipe.cu,
+        co: recipe.co,
+        flux: recipe.flux,
+        tmax: curve.tmax,
+        reduction: curve.reduction,
+      }
+      meta = { ...meta, notes: parseNotes([...meta.notes, note]) }
+      saveMeta(localStorage, meta)
+      renderYard()
+    })
+
+    const head = h('div', 'g-yard-item')
+    const headText = h('div', 'txt')
+    headText.append(txt(h('b'), '记下案上这方'), txt(h('span'), '四味料、最高温、还原强度进存档'))
+    const headActs = h('div', 'acts')
+    headActs.append(labelIn, keep)
+    head.append(headText, headActs)
+
+    const rows: HTMLElement[] = [head]
+    meta.notes.forEach((note, i) => {
+      rows.push(
+        itemRow(
+          note.label,
+          `铁 ${note.fe} · 铜 ${note.cu} · 钴 ${note.co} · 助熔 ${note.flux} · ${note.tmax}℃ · 还原 ${note.reduction}`,
+          [useBtn(note), dropBtn(i)],
+        ),
+      )
+    })
+    return rows
+  }
+
+  function useBtn(note: GlazeNote): HTMLButtonElement {
+    const b = h('button')
+    b.type = 'button'
+    b.textContent = '用这方'
+    b.title = '本局没掷到的料按 0 用，不会替你偷偷烧钴'
+    b.addEventListener('click', () => {
+      const next = noteToRecipe(note, pool)
+      for (const k of Object.keys(next) as Array<keyof Recipe>) {
+        recipe[k] = clampParam(RECIPE_PARAMS, k, next[k])
+      }
+      curve.tmax = clampParam(CURVE_PARAMS, 'tmax', note.tmax)
+      curve.reduction = clampParam(CURVE_PARAMS, 'reduction', note.reduction)
+      showYard(false)
+      render()
+    })
+    return b
+  }
+
+  function dropBtn(index: number): HTMLButtonElement {
+    const b = h('button')
+    b.type = 'button'
+    b.textContent = '删'
+    b.addEventListener('click', () => {
+      meta = { ...meta, notes: meta.notes.filter((_, i) => i !== index) }
+      saveMeta(localStorage, meta)
+      renderYard()
+    })
+    return b
   }
 
   function render(): void {

@@ -1,3 +1,4 @@
+import type { Recipe } from './balance'
 import { mulberry32 } from './rng'
 
 /**
@@ -32,13 +33,64 @@ export const UNLOCKABLES: Unlockable[] = [
 /** 每局至少给两种料可选，否则开局毫无决策 */
 export const MIN_POOL = 2
 
+export interface GlazeNote {
+  label: string
+  fe: number
+  cu: number
+  co: number
+  flux: number
+  tmax: number
+  reduction: number
+}
+
+/** 笔记上限：存档是明文 JSON，别让它无限长 */
+export const MAX_NOTES = 12
+
+/**
+ * 笔记是用户能自己改的外部输入，逐条验：
+ * 少字段、非数、label 空，一律丢掉而不是留个 NaN 进配方。
+ */
+export function sanitizeNote(raw: unknown): GlazeNote | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const o = raw as Record<string, unknown>
+  const label = typeof o.label === 'string' ? o.label.trim().slice(0, 24) : ''
+  if (label === '') return null
+  const num = (key: string): number | null => {
+    const v = o[key]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+  const fe = num('fe')
+  const cu = num('cu')
+  const co = num('co')
+  const flux = num('flux')
+  const tmax = num('tmax')
+  const reduction = num('reduction')
+  if (fe === null || cu === null || co === null || flux === null || tmax === null) return null
+  if (reduction === null) return null
+  return { label, fe, cu, co, flux, tmax, reduction }
+}
+
+export function parseNotes(raw: unknown): GlazeNote[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map(sanitizeNote).filter((n): n is GlazeNote => n !== null).slice(0, MAX_NOTES)
+}
+
+/**
+ * 笔记落回案上时，本局没掷到的料一律按 0 用——
+ * 否则"上次存的方子"会绕过釉料池，把锁住的钴偷偷烧进窑里。
+ */
+export function noteToRecipe(note: GlazeNote, pool: string[]): Recipe {
+  const on = (key: 'fe' | 'cu' | 'co'): number => (pool.includes(key) ? note[key] : 0)
+  return { fe: on('fe'), cu: on('cu'), co: on('co'), flux: note.flux }
+}
+
 export interface MetaState {
   renown: number
   unlocked: string[]
   runs: number
   bestScore: number
   /** 配方笔记：局末分数不保留，但你自己记的东西永久留着 */
-  notes: Array<{ label: string; fe: number; cu: number; co: number; flux: number; tmax: number; reduction: number }>
+  notes: GlazeNote[]
 }
 
 export const DEFAULT_META: MetaState = {
@@ -189,7 +241,7 @@ export function loadMeta(store: Pick<Storage, 'getItem'> | null): MetaState {
       unlocked: Array.isArray(parsed.unlocked) ? parsed.unlocked.filter((id) => known.has(id)) : [],
       runs: Number.isFinite(parsed.runs) ? Math.max(0, Number(parsed.runs)) : 0,
       bestScore: Number.isFinite(parsed.bestScore) ? Math.max(0, Number(parsed.bestScore)) : 0,
-      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+      notes: parseNotes(parsed.notes),
     }
   } catch {
     return { ...DEFAULT_META }

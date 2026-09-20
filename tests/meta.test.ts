@@ -10,9 +10,13 @@ import {
   canBuy,
   drawGlazePool,
   loadMeta,
+  MAX_NOTES,
+  noteToRecipe,
+  parseNotes,
   planLabel,
   plansOwned,
   renownEarned,
+  sanitizeNote,
   saveMeta,
   settleRun,
   shapeOffsets,
@@ -178,6 +182,50 @@ describe('本局上身的东西', () => {
     const worse = settleRun(after, { score: 10, grades: {}, breached: 0 })
     expect(worse.bestScore).toBe(88)
     expect(worse.runs).toBe(2)
+  })
+})
+
+describe('配方笔记', () => {
+  it('少字段、非数、空名都丢掉，不留 NaN 进配方', () => {
+    expect(sanitizeNote(NOTE)).toEqual(NOTE)
+    expect(sanitizeNote({ ...NOTE, label: '   ' })).toBeNull()
+    expect(sanitizeNote({ ...NOTE, co: 'x' })).toBeNull()
+    expect(sanitizeNote({ ...NOTE, tmax: Number.NaN })).toBeNull()
+    expect(sanitizeNote({ label: '缺东西' })).toBeNull()
+    expect(sanitizeNote(null)).toBeNull()
+    expect(sanitizeNote('铁 1.5')).toBeNull()
+  })
+
+  it('名字太长截断，不撑破存档', () => {
+    const long = sanitizeNote({ ...NOTE, label: '青'.repeat(40) }) as NonNullable<
+      ReturnType<typeof sanitizeNote>
+    >
+    expect(long.label).toHaveLength(24)
+  })
+
+  it('parseNotes 逐条筛，并且有条数上限', () => {
+    expect(parseNotes([NOTE, { label: '坏' }, null])).toEqual([NOTE])
+    expect(parseNotes('not an array')).toEqual([])
+    expect(parseNotes(Array.from({ length: 30 }, (_, i) => ({ ...NOTE, label: `方 ${i}` })))).toHaveLength(
+      MAX_NOTES,
+    )
+  })
+
+  it('用笔记时，本局没掷到的料按 0 用', () => {
+    const saved = { ...NOTE, fe: 2, cu: 3, co: 1.8 }
+    expect(noteToRecipe(saved, ['fe', 'cu'])).toEqual({ fe: 2, cu: 3, co: 0, flux: NOTE.flux })
+    expect(noteToRecipe(saved, ['fe'])).toEqual({ fe: 2, cu: 0, co: 0, flux: NOTE.flux })
+  })
+
+  it('存档里混进的坏笔记，loadMeta 之后只剩好的那条', () => {
+    const raw = JSON.stringify({
+      renown: 5,
+      unlocked: [],
+      runs: 1,
+      bestScore: 1,
+      notes: [NOTE, { label: '缺字段' }, { label: '字符串数', fe: '1', cu: 0, co: 0, flux: 0, tmax: 1, reduction: 0 }],
+    })
+    expect(loadMeta(storeWith(raw)).notes).toEqual([NOTE])
   })
 })
 
