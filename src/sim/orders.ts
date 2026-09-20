@@ -1,4 +1,5 @@
 import { mulberry32 } from './rng'
+import { fillableTargets } from './solutions'
 import { TARGETS } from './targets'
 
 /**
@@ -49,11 +50,14 @@ export function makeOffer(
   slot: number,
   bias: number[] = [],
   rules: OfferRules = DEFAULT_RULES,
+  pool?: string[],
 ): Offer {
+  /** 池子外的色根本交不了，出这种单不是难度而是陷阱，所以直接不出 */
+  const allowed = pool === undefined ? TARGETS.map((_, i) => i) : fillableTargets(pool)
   const useBias = bias.length > 0 && rnd() < 0.55
   const targetIndex = useBias
     ? bias[Math.floor(rnd() * bias.length) % bias.length]
-    : Math.floor(rnd() * TARGETS.length) % TARGETS.length
+    : allowed[Math.floor(rnd() * allowed.length) % allowed.length]
   const qty = 1 + Math.floor(rnd() * 3)
   const deadlineKiln = Math.max(
     kiln + 1,
@@ -64,7 +68,7 @@ export function makeOffer(
   return { id: kiln * 10 + slot, targetIndex, qty, deadlineKiln, pricePerPiece }
 }
 
-export function openingOffers(seed: number, rules: OfferRules = DEFAULT_RULES): Offer[] {
+export function openingOffers(seed: number, rules: OfferRules = DEFAULT_RULES, pool?: string[]): Offer[] {
   const rnd = mulberry32(seed)
-  return [makeOffer(rnd, 1, 0, [], rules), makeOffer(rnd, 1, 1, [], rules)]
+  return [makeOffer(rnd, 1, 0, [], rules, pool), makeOffer(rnd, 1, 1, [], rules, pool)]
 }

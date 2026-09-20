@@ -42,7 +42,7 @@ import {
   type PieceResult,
   type RunState,
 } from '../sim/run'
-import { searchFiring } from '../sim/search'
+import { needsOf, solutionFor } from '../sim/solutions'
 import { TARGETS } from '../sim/targets'
 import { drawGlazedVessel, swatchStyle } from './bowl'
 import { mountSliders, syncAll, type Slider } from './sliders'
@@ -86,17 +86,6 @@ function heatHint(offset: number): string {
   return '中位'
 }
 
-const solutionCache = new Map<number, { recipe: Recipe; curve: Curve }>()
-
-function solutionFor(targetIndex: number): { recipe: Recipe; curve: Curve } {
-  const hit = solutionCache.get(targetIndex)
-  if (hit !== undefined) return hit
-  const s = searchFiring(TARGETS[targetIndex].lab, 60, 20260919)
-  const sol = { recipe: s.recipe, curve: s.curve }
-  solutionCache.set(targetIndex, sol)
-  return sol
-}
-
 const JARS: Array<{ key: keyof Recipe; name: string; note: string; step: number; swatch: string }> = [
   {
     key: 'fe',
@@ -136,7 +125,7 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
   let planId = plansOwned(meta).includes(wantPlan) ? wantPlan : DEFAULT_PLAN
   /** 本局开局可用的釉料池。锁住的料罐一律不许有读数，所以配方值要跟着清零 */
   let pool = drawGlazePool(seed, meta)
-  let run: RunState = newRun(seed, modifierId, { planId, ...toolMults(meta) })
+  let run: RunState = newRun(seed, modifierId, { planId, pool, ...toolMults(meta) })
   let phase: 'ready' | 'firing' | 'result' = 'ready'
   let lastFired: PieceResult[] = []
   /** 本局终了时进账的口碑，只为把那句话显示出来 */
@@ -230,7 +219,7 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     lastGain = 0
     phase = 'ready'
     setFire(0)
-    run = newRun(seed, modifierId, { planId, ...toolMults(meta) })
+    run = newRun(seed, modifierId, { planId, pool, ...toolMults(meta) })
     render()
   }
 
@@ -424,6 +413,33 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
     return leafEl
   }
 
+  /** 池外的料一归零就不是那个色了，所以这种方子根本不该递给人 */
+  function missingOf(targetIndex: number): string[] {
+    return needsOf(targetIndex)
+      .filter((k) => !pool.includes(k))
+      .map((k) => JARS.find((j) => j.key === k)?.name ?? k)
+  }
+
+  function solveAct(targetIndex: number): HTMLButtonElement {
+    const missing = missingOf(targetIndex)
+    const b = h('button')
+    b.type = 'button'
+    if (missing.length > 0) {
+      b.textContent = '罐里没有'
+      b.disabled = true
+      b.title = `这方要${missing.join('、')}，本局没掷到；去窑场开罐，或换一局`
+      return b
+    }
+    b.textContent = '照这单调方'
+    b.addEventListener('click', () => {
+      const sol = solutionFor(targetIndex)
+      for (const k of Object.keys(sol.recipe) as Array<keyof Recipe>) recipe[k] = sol.recipe[k]
+      for (const k of Object.keys(sol.curve) as Array<keyof Curve>) curve[k] = sol.curve[k]
+      render()
+    })
+    return b
+  }
+
   function renderOrders(): void {
     ordersBox.replaceChildren(txt(h('h2', 'g-h'), '订单册'))
     for (const o of run.offers) {
@@ -462,12 +478,7 @@ export function mountGame(host: HTMLElement, entry: GameEntry): void {
               thud()
               render()
             }),
-            smallAct('照这单调方', () => {
-              const sol = solutionFor(o.targetIndex)
-              for (const k of Object.keys(sol.recipe) as Array<keyof Recipe>) recipe[k] = sol.recipe[k]
-              for (const k of Object.keys(sol.curve) as Array<keyof Curve>) curve[k] = sol.curve[k]
-              render()
-            }),
+            solveAct(o.targetIndex),
           ],
           i === 0,
         ),

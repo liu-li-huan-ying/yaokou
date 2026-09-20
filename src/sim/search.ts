@@ -60,12 +60,12 @@ function score(point: FiringSolution, target: Lab): number {
  * 坐标模式下降：沿每个旋钮试 ±step 的位移，走不通就把步长折半。
  * 只依赖 fireGlaze 的确定性，因此同一 seed 必得同一结果。
  */
-function descend(start: FiringSolution, target: Lab): FiringSolution {
+function descend(start: FiringSolution, target: Lab, knobs = KNOBS): FiringSolution {
   let best: FiringSolution = { ...start, deltaE: score(start, target) }
   let step = 0.25
   while (step > 1 / 512) {
     let improved = false
-    for (const knob of KNOBS) {
+    for (const knob of knobs) {
       const span = knob.max - knob.min
       for (const sign of [1, -1]) {
         const candidate = withKnob(
@@ -86,21 +86,32 @@ function descend(start: FiringSolution, target: Lab): FiringSolution {
 }
 
 /**
- * 找一窑能烧出目标色的配方与曲线。M1 生成订单前必须用它预检，
- * 否则会出现"目标色根本烧不出来"的死单。
+ * 找一窑能烧出目标色的配方与曲线。
+ *
+ * `onlyOxides` 把可用料罐限死（池外的料压根不给动），M3 用它给每个目标色
+ * 定一份"传世方子"：方子写进 `targets.ts` 当数据，运行时不再搜索，
+ * 于是"这单本局烧不烧得出来"是查表，不是赌搜索器这次开了哪味料。
  */
-export function searchFiring(target: Lab, restarts = 60, seed = 20260919): FiringSolution {
+export function searchFiring(
+  target: Lab,
+  restarts = 60,
+  seed = 20260919,
+  onlyOxides?: string[],
+): FiringSolution {
+  const locked = (key: string): boolean =>
+    onlyOxides !== undefined && ['fe', 'cu', 'co'].includes(key) && !onlyOxides.includes(key)
+  const knobs = KNOBS.filter((k) => !locked(k.key))
   const rnd = mulberry32(seed)
   let best: FiringSolution | null = null
   for (let i = 0; i < restarts; i++) {
-    const recipe = {} as Recipe
+    const recipe = { fe: 0, cu: 0, co: 0 } as Recipe
     const curve = {} as Curve
-    for (const knob of KNOBS) {
+    for (const knob of knobs) {
       const v = knob.min + rnd() * (knob.max - knob.min)
       if (knob.holder === 'recipe') (recipe as unknown as Record<string, number>)[knob.key] = v
       else (curve as unknown as Record<string, number>)[knob.key] = v
     }
-    const candidate = descend({ deltaE: 0, recipe, curve }, target)
+    const candidate = descend({ deltaE: 0, recipe, curve }, target, knobs)
     if (best === null || candidate.deltaE < best.deltaE) best = candidate
     if (best.deltaE < 0.02) break
   }

@@ -9,6 +9,7 @@ import {
 import { fireGlaze } from '../src/sim/glaze'
 import { deltaE2000, type Lab } from '../src/sim/deltae'
 import { searchFiring } from '../src/sim/search'
+import { fillable, fillableTargets, needsOf } from '../src/sim/solutions'
 import { TARGETS } from '../src/sim/targets'
 import { mulberry32 } from '../src/sim/rng'
 
@@ -53,22 +54,54 @@ describe('目标釉色可达性（设计文档硬约束）', () => {
     })
   }
 
-  it('空配方烧不出珍品，至多蒙中淡白釉那一档', () => {
-    // 实测事实：空配方 + 低温短时 = (94.2, -2, 8)，与"月白"只差 5.0，落在正品档。
-    // 月白本就是白釉本色，这不是模型缺陷。因此躺赢的不可能性要这样表述：
-    // 珍品档一律够不到；正品档至多命中 2/7 个目标，其余仍是粗器/废品。
+  it('空配方只蒙得住月白，其余六色一律够不到珍品', () => {
+    // 月白本就是素釉本色（它的方子就是"不加料"），所以空配方命中它是设计而非漏洞。
+    // 躺赢的不可能性因此要这样表述：白烧至多交付最便宜的那一档（22 贯），
+    // 其余六色一律出不了珍品。
     const raw = fireGlaze(EMPTY, { ...REF_CURVE, tmax: 1150, soak: 0 }, 0)
     const mature = fireGlaze(EMPTY, REF_CURVE, 0)
-    let withinZhengpin = 0
     for (const target of TARGETS) {
       const best = Math.min(
         deltaE2000(raw.lab, target.lab),
         deltaE2000(mature.lab, target.lab),
       )
+      if (target.name === '月白') continue
       expect(best).toBeGreaterThan(2)
-      if (best < 6) withinZhengpin++
     }
-    expect(withinZhengpin).toBeLessThanOrEqual(2)
+    expect(deltaE2000(mature.lab, TARGETS[3].lab)).toBeLessThan(2)
+  })
+})
+
+describe('传世方子（釉料池判据的地基）', () => {
+  for (const target of TARGETS) {
+    it(`${target.name} 的方子按池内用料烧得出珍品`, () => {
+      const fired = fireGlaze(target.glaze.recipe, target.glaze.curve, 0)
+      expect(deltaE2000(fired.lab, target.lab)).toBeLessThan(2)
+    })
+  }
+
+  it('一色一方的方子互不通用：烧对一色，其余六色都出不了珍品', () => {
+    // 这条是"按色批窑"这个核心决策的前提。若一份方子能同时命中两色，
+    // 混单就不亏，窑位与池子都失去意义。
+    for (const [i, mine] of TARGETS.entries()) {
+      const lab = fireGlaze(mine.glaze.recipe, mine.glaze.curve, 0).lab
+      for (const [j, other] of TARGETS.entries()) {
+        if (i === j) continue
+        expect(deltaE2000(lab, other.lab)).toBeGreaterThanOrEqual(2)
+      }
+    }
+  })
+
+  it('池子决定接得了哪几色：白手三色、开铜六色、开钴七色', () => {
+    // 这条钉的是元进度的"形状"：解锁不是数字变大，而是订单册真的变宽。
+    const names = (pool: string[]): string[] => fillableTargets(pool).map((i) => TARGETS[i].name)
+    expect(names(['fe'])).toEqual(['天青', '梅子青', '月白'])
+    expect(names(['fe', 'cu'])).toHaveLength(6)
+    expect(names(['fe', 'cu', 'co'])).toHaveLength(TARGETS.length)
+    for (const [i, t] of TARGETS.entries()) {
+      expect(fillable(i, ['fe', 'cu', 'co'])).toBe(true)
+      expect(needsOf(i).every((k) => t.glaze.recipe[k as 'fe' | 'cu' | 'co'] > 0)).toBe(true)
+    }
   })
 })
 

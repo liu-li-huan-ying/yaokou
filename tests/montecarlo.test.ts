@@ -6,11 +6,17 @@ import { newRun, summarize, type RunSummary } from '../src/sim/run'
 const SEEDS = 200
 const GUARD = 40
 
-function playOne(policyName: string, seed: number): RunSummary {
+/** 两档池子：白手只有铁，满罐三味齐全。差出来的分就是"解锁到底值不值" */
+const TIERS: Record<string, string[]> = {
+  白手: ['fe'],
+  满罐: ['fe', 'cu', 'co'],
+}
+
+function playOne(policyName: string, seed: number, pool: string[]): RunSummary {
   const policy = POLICIES.find((p) => p.name === policyName)
   if (policy === undefined) throw new Error(`无此策略 ${policyName}`)
   // 按 seed 抽开局修饰符，与玩家实际开局一致：不抽就等于 MC 只测了默认那张"稳火"
-  const state0 = newRun(seed, draftModifiers(seed)[0].id)
+  const state0 = newRun(seed, draftModifiers(seed)[0].id, { pool })
   let state = state0
   let steps = 0
   while (!state.over && steps < GUARD) {
@@ -55,38 +61,53 @@ function statsOf(name: string, runs: RunSummary[]): Stats {
   }
 }
 
-const all: Stats[] = POLICIES.map((p) =>
-  statsOf(
-    p.name,
-    Array.from({ length: SEEDS }, (_, i) => playOne(p.name, i + 1)),
-  ),
-)
+function tableOf(pool: string[]): Map<string, Stats> {
+  return new Map(
+    POLICIES.map((p) =>
+      statsOf(
+        p.name,
+        Array.from({ length: SEEDS }, (_, i) => playOne(p.name, i + 1, pool)),
+      ),
+    ).map((s) => [s.name, s]),
+  )
+}
 
-const byName = new Map(all.map((s) => [s.name, s]))
-const pick = (name: string): Stats => byName.get(name) as Stats
+const byTier = new Map<string, Map<string, Stats>>(
+  Object.entries(TIERS).map(([tier, pool]) => [tier, tableOf(pool)]),
+)
+const all: Stats[] = [...byTier.get('白手')!.values()]
+
+const pick = (name: string): Stats => byTier.get('白手')!.get(name) as Stats
+const pickTier = (tier: string, name: string): Stats => byTier.get(tier)!.get(name) as Stats
 
 /**
  * 每个种子的赢家按"分"定，且平分不算赢。
  * 上一版按剩余现金排名，躺平（不接单、每窑烧空、+10）会在部分种子上
  * 赢过玩砸了的破产者（负数）——那是计分口径的错，不是策略的功劳。
  */
-const winners = new Map<string, number>()
-for (let seed = 1; seed <= SEEDS; seed++) {
-  let bestName = ''
-  let bestScore = -1
-  let tie = false
-  for (const p of POLICIES) {
-    const score = (byName.get(p.name) as Stats).runs[seed - 1].score
-    if (score > bestScore) {
-      bestScore = score
-      bestName = p.name
-      tie = false
-    } else if (score === bestScore) {
-      tie = true
+function winnersOf(tier: string): Map<string, number> {
+  const table = byTier.get(tier) as Map<string, Stats>
+  const out = new Map<string, number>()
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    let bestName = ''
+    let bestScore = -1
+    let tie = false
+    for (const p of POLICIES) {
+      const score = (table.get(p.name) as Stats).runs[seed - 1].score
+      if (score > bestScore) {
+        bestScore = score
+        bestName = p.name
+        tie = false
+      } else if (score === bestScore) {
+        tie = true
+      }
     }
+    if (!tie) out.set(bestName, (out.get(bestName) ?? 0) + 1)
   }
-  if (!tie) winners.set(bestName, (winners.get(bestName) ?? 0) + 1)
+  return out
 }
+
+const winners = winnersOf('白手')
 
 describe('200 局 Monte Carlo：循环引擎真伪检查', () => {
   it('打印五策略对照表', () => {
@@ -147,5 +168,44 @@ describe('200 局 Monte Carlo：循环引擎真伪检查', () => {
       expect(s.kilnsMean).toBeGreaterThanOrEqual(12)
       expect(s.kilnsMean).toBeLessThanOrEqual(17)
     }
+  })
+})
+
+describe('两档池子对照：解锁到底改变了什么', () => {
+  it('打印满罐档对照表', () => {
+    const rows = [...byTier.get('满罐')!.values()].map(
+      (s) =>
+        `${s.name.padEnd(6, ' ')}  ${s.scoreMean.toFixed(1).padStart(7)}  ${s.kilnsMean
+          .toFixed(1)
+          .padStart(6)}  ${s.deliveredMean.toFixed(1).padStart(6)}  ${(s.bankruptRate * 100)
+          .toFixed(0)
+          .padStart(4)}%`,
+    )
+    console.log(['\n策略      平均分  平均窑数  交付件数  破产率', ...rows].join('\n'))
+    expect(true).toBe(true)
+  })
+
+  it('会求解的策略在满罐下确实更强：订单册变宽了', () => {
+    for (const name of ['按单求解', '看行情应变']) {
+      expect(pickTier('满罐', name).scoreMean).toBeGreaterThan(pickTier('白手', name).scoreMean)
+    }
+  })
+
+  it('但解锁不会把循环买成假的：满罐下固定一套配方照样压不倒应变', () => {
+    const fixed = pickTier('满罐', '一法到底')
+    const best = Math.max(
+      pickTier('满罐', '按单求解').scoreMean,
+      pickTier('满罐', '看行情应变').scoreMean,
+    )
+    expect(fixed.scoreMean).toBeLessThan(best)
+  })
+
+  it('两档里躺平都赢不了；满罐的赢家也不再只有一人', () => {
+    const full = winnersOf('满罐')
+    console.log(`满罐赢家分布 ${[...full.entries()].map(([k, v]) => `${k}:${v}`).join(' ')}`)
+    for (const tier of ['白手', '满罐']) {
+      expect(winnersOf(tier).get('躺平') ?? 0).toBe(0)
+    }
+    expect(full.size).toBeGreaterThanOrEqual(2)
   })
 })

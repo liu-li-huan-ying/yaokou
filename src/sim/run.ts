@@ -1,7 +1,7 @@
 import { type Curve, type Recipe } from './balance'
 import { deltaE2000, type Lab } from './deltae'
 import { fireGlaze, gradeOf } from './glaze'
-import { DEFAULT_PLAN, shapeOffsets } from './meta'
+import { DEFAULT_META, DEFAULT_PLAN, drawGlazePool, shapeOffsets } from './meta'
 import { modifierById, weatherFor, type Modifier, type Weather } from './modifiers'
 import { makeOffer, openingOffers, type Offer } from './orders'
 import { mulberry32 } from './rng'
@@ -105,6 +105,8 @@ export interface RunState {
   planId: string
   /** 本局窑位数：密檐窑图会少一位 */
   capacity: number
+  /** 本局罐里有的料（fe/cu/co）。池外的料在 sim 里就不算数 */
+  pool: string[]
   /** 窑具对缺陷概率的倍率（匣钵只管流釉、支钉只管变形） */
   runoffMult: number
   deformMult: number
@@ -127,8 +129,20 @@ export interface RunState {
 
 export interface RunOptions {
   planId?: string
+  /** 本局罐里有的料。默认就是白手起家那一份：只有铁 */
+  pool?: string[]
   runoffMult?: number
   deformMult?: number
+}
+
+/**
+ * 釉料池是本局的硬约束。界面只是不让点，这里兜底：锁住的料绝不该
+ * 影响呈色，也不该算料钱——"照这单调方"这类绕开料罐直接写配方的
+ * 入口，靠这一层才真正堵死。
+ */
+export function inPool(recipe: Recipe, pool: string[]): Recipe {
+  const on = (key: 'fe' | 'cu' | 'co'): number => (pool.includes(key) ? recipe[key] : 0)
+  return { fe: on('fe'), cu: on('cu'), co: on('co'), flux: recipe.flux }
 }
 
 export function newRun(seed: number, modifierId = 'steady', opts: RunOptions = {}): RunState {
@@ -137,11 +151,13 @@ export function newRun(seed: number, modifierId = 'steady', opts: RunOptions = {
   const [lo, hi] = modifier.offsetSpan
   const raw = Array.from({ length: ECONOMY.capacity }, () => lo + rnd() * (hi - lo))
   const kilnOffsets = shapeOffsets(opts.planId, raw, lo, hi)
+  const pool = opts.pool ?? drawGlazePool(seed, DEFAULT_META)
   return {
     seed,
     modifier,
     planId: opts.planId ?? DEFAULT_PLAN,
     capacity: kilnOffsets.length,
+    pool,
     runoffMult: opts.runoffMult ?? 1,
     deformMult: opts.deformMult ?? 1,
     weather: weatherFor(seed, 1),
@@ -150,7 +166,7 @@ export function newRun(seed: number, modifierId = 'steady', opts: RunOptions = {
     offers: openingOffers(seed, {
       priceMult: modifier.priceMult,
       deadlineShift: modifier.deadlineShift,
-    }),
+    }, pool),
     accepted: [],
     delivered: {},
     kilnOffsets,
@@ -209,6 +225,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
   }
 
   /** 先把真正能装进窑的件挑出来：制胎钱按件数算，所以件数要在扣钱之前定下来 */
+  const recipe = inPool(loading.recipe, state.pool)
   const taken: Record<number, number> = {}
   const plan: Array<{ orderId: number; position: number; order: Offer }> = []
   loading.orderIds.slice(0, state.capacity).forEach((orderId, position) => {
@@ -219,7 +236,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
     plan.push({ orderId, position, order })
   })
 
-  const cost = fireCost(loading.recipe, curve, plan.length)
+  const cost = fireCost(recipe, curve, plan.length)
   const rnd = mulberry32(state.seed * 1000003 + state.kiln * 7919)
   const delivered: Record<number, number> = { ...state.delivered }
   const pieces: PieceResult[] = []
@@ -227,7 +244,7 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
 
   for (const { orderId, position, order } of plan) {
     const offset = state.kilnOffsets[position] ?? 0
-    const result = fireGlaze(loading.recipe, curve, offset)
+    const result = fireGlaze(recipe, curve, offset)
     const d = deltaE2000(result.lab, TARGETS[order.targetIndex].lab)
     const risk =
       Math.max(result.runoffRisk * state.runoffMult, result.deformRisk * state.deformMult) *
@@ -279,8 +296,8 @@ export function fireKiln(state: RunState, loading: Loading): RunState {
     priceMult: state.modifier.priceMult,
     deadlineShift: state.modifier.deadlineShift,
   }
-  const fresh: Offer[] = [makeOffer(offerRnd, nextKiln, 0, bias, rules)]
-  if (offerRnd() < 0.45) fresh.push(makeOffer(offerRnd, nextKiln, 1, bias, rules))
+  const fresh: Offer[] = [makeOffer(offerRnd, nextKiln, 0, bias, rules, state.pool)]
+  if (offerRnd() < 0.45) fresh.push(makeOffer(offerRnd, nextKiln, 1, bias, rules, state.pool))
   const offers = [...state.offers.filter((o) => o.deadlineKiln > nextKiln), ...fresh].slice(
     -ECONOMY.offerBoard,
   )
